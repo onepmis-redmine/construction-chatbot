@@ -1,0 +1,151 @@
+.app-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 100vh;
+  padding: 20px;
+  background-color: #f9f9f9;
+  font-family: Arial, sans-serif;
+}
+
+.app-title {
+  font-size: 32px;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.chat-container {
+  width: 100%;
+  max-width: 700px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.messages {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.message {
+  max-width: 80%;
+  padding: 10px 15px;
+  border-radius: 10px;
+  line-height: 1.5;
+}
+
+.user-message {
+  align-self: flex-end;
+  background-color: #007bff;
+  color: white;
+}
+
+.bot-message {
+  align-self: flex-start;
+  background-color: #e9ecef;
+  color: #333;
+}
+
+.message-content {
+  font-size: 16px;
+}
+
+.sources {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #555;
+}
+
+.sources ul {
+  margin: 5px 0 0 0;
+  padding-left: 20px;
+}
+
+.input-container {
+  display: flex;
+  align-items: center;
+  padding: 15px;
+  border-top: 1px solid #ddd;
+  background-color: #f8f9fa;
+}
+
+.input-form {
+  display: flex;
+  flex: 1;
+  margin-right: 10px;
+}
+
+.input-field {
+  flex: 1;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ccc;
+  border-radius: 5px 0 0 5px;
+  outline: none;
+}
+
+.input-field:disabled {
+  background-color: #e9ecef;
+  cursor: not-allowed;
+}
+
+.send-button {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 0 5px 5px 0;
+  cursor: pointer;
+}
+
+.send-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.clear-button {
+  padding: 10px 15px;
+  font-size: 14px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.clear-button:hover {
+  background-color: #c82333;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 4px solid #ccc;
+  border-top: 4px solid #007bff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 10px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@media (max-width: 600px) {
+  .input-field {
+    font-size: 14px;
+  }
+  .send-button, .clear-button {
+    padding: 10px;
+  }
+}

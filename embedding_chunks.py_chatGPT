@@ -1,0 +1,51 @@
+import os
+import json
+import chromadb
+from sentence_transformers import SentenceTransformer
+from tqdm import tqdm
+
+# 폴더 경로
+CHUNKS_DIR = "chunks/"
+DB_DIR = "vector_db/"
+
+# 벡터DB 저장할 폴더 만들기
+os.makedirs(DB_DIR, exist_ok=True)
+
+# ChromaDB 클라이언트 생성 (수정!)
+chroma_client = chromadb.PersistentClient(path=DB_DIR)
+
+# 벡터DB Collection 생성
+collection = chroma_client.get_or_create_collection(name="construction_manuals")
+
+# 임베딩 모델 로드
+embedder = SentenceTransformer('all-MiniLM-L6-v2')
+
+# 문단 읽고 임베딩해서 저장
+for filename in tqdm(os.listdir(CHUNKS_DIR)):
+    if not filename.endswith(".json"):
+        continue
+
+    filepath = os.path.join(CHUNKS_DIR, filename)
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        chunks = json.load(f)
+
+    texts = [chunk["text"] for chunk in chunks]
+    ids = [f"{filename}_{i}" for i in range(len(texts))]
+
+    embeddings = embedder.encode(texts).tolist()
+
+    collection.add(
+        documents=texts,
+        embeddings=embeddings,
+        ids=ids,
+        metadatas=[{"source": filename}] * len(texts)  # 각 chunk에 해당 파일명을 출처로 등록
+    )
+
+    # collection.add(
+    #     documents=[chunk],
+    #     embeddings=[embedding],
+    #     metadatas=[{"source": filename}]
+    # )
+
+print("✅ 임베딩 저장 완료!")
