@@ -468,3 +468,6 @@
 2025-05-13 15:02:51,148 - INFO - Question: 비밀번호는?  | Answer: 비밀번호는 사용자가 처음 로그인 시 설정한 비밀번호를 사용해야 합니다. 만약 비밀번호를 분실하셨다면 시스템 관리자에게 문의하여 재설정할 수 있습니다. | Sources: []
 2025-05-13 15:03:09,129 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
 2025-05-13 15:03:10,452 - INFO - Question: 연장수당은?  | Answer: 연장수당은 근로자가 근로시간을 초과하여 근무한 경우 지급되는 추가 수당을 말합니다. 연장근로시간은 기본 근로시간을 초과하는 시간을 의미하며, 이 시간에 대해 추가적인 보상이 제공됩니다. 연장수당은 회사 내규나 근로계약서에 따라 다를 수 있습니다. | Sources: []
+2025-05-13 15:26:35,137 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:26:36,818 - INFO - HTTP Request: GET https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz "HTTP/1.1 200 OK"
+2025-05-13 15:27:13,747 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
