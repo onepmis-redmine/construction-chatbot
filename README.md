@@ -2,10 +2,6 @@ openai/gpt-3.5-turbo 인증키
 https://openrouter.ai/models?q=keys
 construction-chatbot-API_Key
 
-#파일 다시 chunks
-cd ..
-python .\embedding_chunks.py
-
 #FastAPI 서버 실행하기
 cd api_server
 uvicorn main:app --reload
@@ -44,6 +40,12 @@ http://localhost:3000
 
 🧪 UI 개선 (Material UI, Tailwind 등)
 
-💬 챗봇 형식 변경 (대화 방식)
+
 
 🔁 GPT 응답 캐싱 등
+
+https://github.com/
+onepmis-redmine / onepmis123
+
+https://render.com
+git계정으로 사용 가능

@@ -433,3 +433,10 @@
 2025-05-13 10:44:34,567 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
 2025-05-13 10:44:34,733 - INFO - Use pytorch device_name: cpu
 2025-05-13 10:44:34,734 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 11:19:41,410 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 11:19:41,667 - INFO - Use pytorch device_name: cpu
+2025-05-13 11:19:41,667 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 11:20:02,256 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 11:20:03,588 - INFO - Question: 주휴수당은?  | Answer: 근로자의 계약서상에 있는 소정근로일을 개근하고, 해당 주의 일주일의 계약이 모두 있는 경우에 발생함. 만약 근로자가 월~금까지 근로한다면 월~일까지 근무하는 계약이 있어야 주휴수당이 발생합니다. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', 'from_excel.json']
+2025-05-13 11:20:08,791 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 11:20:09,865 - INFO - Question: 연장수당은?  | Answer: 주간 40시간 초과, 일 8시간 초과하면 연장수당이 발생합니다. 예를 들어 월화수목금토까지 8시간씩 총 48시간 근무하면 8시간이 연장수당으로 책정됩니다. | Sources: ['from_excel.json', '김도경', 'from_excel.json', '최헌 가라사대', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
