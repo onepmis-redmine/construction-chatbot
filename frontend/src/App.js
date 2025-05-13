@@ -87,7 +87,7 @@ function App() {
   // 대화 초기화
   const clearChat = () => {
     setMessages([
-      { role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] },
+      { role: "bot", content: "안녕하세요! 건설정보관리시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] },
     ]);
     setInput(""); // 초기화 시 입력 필드 비우기
     setLoading(false); // 명시적으로 로딩 상태 해제

@@ -1,3 +1,7 @@
+openai/gpt-3.5-turbo 인증키
+https://openrouter.ai/models?q=keys
+construction-chatbot-API_Key
+
 #파일 다시 chunks
 cd ..
 python .\embedding_chunks.py

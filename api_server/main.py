@@ -6,6 +6,11 @@ import httpx
 import json
 from fastapi.middleware.cors import CORSMiddleware #frontend React 프로젝트 추가
 import logging
+import os
+from dotenv import load_dotenv
+load_dotenv()
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
 
 #그록3 로깅 설정
 logging.basicConfig(
@@ -13,11 +18,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
-
-# OpenRouter API Key
-OPENROUTER_API_KEY = "Bearer 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"
-
+      
 # FastAPI 앱 생성
 app = FastAPI()
 
@@ -59,6 +60,9 @@ def call_openrouter(prompt: str) -> str:
         # "max_tokens": 200 # 답변이 너무 길어지면 문맥을 벗어날 가능성이 있
 
     }
+
+    print("🔒 headers =", headers)
+    
     response = httpx.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers=headers,
@@ -66,6 +70,9 @@ def call_openrouter(prompt: str) -> str:
         timeout=60.0,
         verify=False  # 테스트 환경에서만 사용
     )
+
+    print("🔁 status code:", response.status_code)
+    print("📦 response body:", response.text)
 
     data = response.json()
     try:
