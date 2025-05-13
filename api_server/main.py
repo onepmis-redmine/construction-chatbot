@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import chromadb
+# import chromadb
 from sentence_transformers import SentenceTransformer
 import httpx
 import json
