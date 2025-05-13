@@ -52,7 +52,7 @@ collection = chroma_client.get_or_create_collection(name="construction_manuals")
 #     )
 
 # 임베딩 모델 로드
-embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu", cache_folder=None)
+embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu", cache_folder="/tmp")
 
 # 질문 형식 정의
 class Question(BaseModel):

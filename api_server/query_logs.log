@@ -497,3 +497,11 @@
 2025-05-13 15:55:12,100 - INFO - Question: 연장수당은 ? | Answer: 주간 40시간 초과, 일 8시간 초과하면 발생합니다. 예를 들어 월화수목금토까지 8시간씩 48시간 일했다면 8시간이 연장수당으로 책정됩니다. | Sources: ['from_excel.json', '김도경', 'from_excel.json', '최헌 가라사대', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
 2025-05-13 15:55:21,069 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
 2025-05-13 15:55:21,825 - INFO - Question: 비밀번호 분실 | Answer: 로그인 화면에 보면 비밀번호 찾기를 눌른 후 본인확인을 통해 비밀번호를 찾을 수 있어. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
+2025-05-13 15:56:45,613 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:56:45,768 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 16:02:50,817 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 16:02:51,734 - INFO - Question: 비밀번호 잃어버림 | Answer: 비밀번호를 분실하신 경우, 시스템 관리자에게 문의하여 비밀번호를 재설정해야 합니다. 사용자가 직접 비밀번호를 초기화하는 기능은 제공되지 않습니다. | Sources: ['manual.pdf']
+2025-05-13 16:03:00,994 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 16:03:01,804 - INFO - Question: 비밀번호 분실 | Answer: 비밀번호를 분실한 경우, 시스템 관리자에게 문의하여 재설정할 수 있습니다. | Sources: ['manual.pdf']
+2025-05-13 16:03:06,104 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 16:03:07,660 - INFO - Question: 주휴수당 | Answer: 건설정보시스템은 건설 프로젝트의 관리를 위한 소프트웨어이므로 주휴수당과 관련된 내용은 해당 시스템에서 제공되지 않습니다. 주휴수당은 근로기준법에 따라 근로자에게 주어지는 혜택으로, 관련된 정보는 근로기준법이나 인사 담당자에게 문의하시기 바랍니다. | Sources: ['manual.pdf']
