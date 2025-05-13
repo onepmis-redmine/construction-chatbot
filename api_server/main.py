@@ -26,21 +26,24 @@ app = FastAPI()
 # CORS 설정 (React 개발 서버에서 오는 요청 허용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://construction-chatbot-api.onrender.com"
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 #frontend React 프로젝트 추가 끝
 
-
-
 # ChromaDB 클라이언트 설정
-chroma_client = chromadb.PersistentClient(path="../vector_db")
+vector_db_path = os.getenv("VECTOR_DB_PATH", "/app/vector_db")
+chroma_client = chromadb.PersistentClient(path=vector_db_path)
 collection = chroma_client.get_or_create_collection(name="construction_manuals")
 
 # 임베딩 모델 로드
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu", cache_folder=None)
 
 # 질문 형식 정의
 class Question(BaseModel):

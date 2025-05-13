@@ -456,3 +456,9 @@
 2025-05-13 14:09:06,999 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
 2025-05-13 14:23:36,615 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
 2025-05-13 14:23:37,755 - INFO - Question: 연장수당 | Answer: 노무비명세서의 연장수당은 주간 40시간을 초과하거나 하루 8시간을 초과할 경우 발생합니다. 예를 들어 월화수목금토까지 8시간씩 48시간 일했다면 8시간이 연장수당으로 책정됩니다. | Sources: ['20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json', 'from_excel.json', '김도경', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
+2025-05-13 14:40:54,195 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 14:40:54,955 - INFO - Question: 비밀번호 잃어버리면 | Answer: 로그인 화면에 보면 비밀번호 찾기를 누른 후 본인확인을 통해 비밀번호를 찾을 수 있어. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
+2025-05-13 14:41:11,633 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 14:41:13,060 - INFO - Question: 존댓말로 해야지 | Answer: 죄송합니다. 귀하의 질문은 매뉴얼에 대한 질문이 아니기 때문에 정확한 답변을 제공할 수 없습니다. 궁금한 내용이 있으시면 자유롭게 질문해 주세요. 감사합니다. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
+2025-05-13 15:02:10,102 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:02:10,469 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
