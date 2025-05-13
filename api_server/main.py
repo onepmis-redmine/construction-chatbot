@@ -38,18 +38,18 @@ app.add_middleware(
 #frontend React 프로젝트 추가 끝
 
 # ChromaDB 클라이언트 설정
-vector_db_path = os.getenv("VECTOR_DB_PATH", "../vector_db")
-# os.makedirs(vector_db_path, exist_ok=True)  # 디렉토리 생성
+vector_db_path = os.getenv("VECTOR_DB_PATH", "/tmp/vector_db")
+os.makedirs(vector_db_path, exist_ok=True)
 chroma_client = chromadb.PersistentClient(path=vector_db_path)
 collection = chroma_client.get_or_create_collection(name="construction_manuals")
 
 # 테스트 데이터 추가 (빈 컬렉션 방지)
-if collection.count() == 0:
-    collection.add(
-        documents=["건설정보시스템은 건설 프로젝트 관리를 위한 소프트웨어입니다."],
-        metadatas=[{"source": "manual.pdf"}],
-        ids=["doc1"]
-    )
+# if collection.count() == 0:
+#     collection.add(
+#         documents=["건설정보시스템은 건설 프로젝트 관리를 위한 소프트웨어입니다."],
+#         metadatas=[{"source": "manual.pdf"}],
+#         ids=["doc1"]
+#     )
 
 # 임베딩 모델 로드
 embedder = SentenceTransformer("all-MiniLM-L6-v2", device="cpu", cache_folder=None)

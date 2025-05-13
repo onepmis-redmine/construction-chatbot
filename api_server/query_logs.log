@@ -471,3 +471,29 @@
 2025-05-13 15:26:35,137 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
 2025-05-13 15:26:36,818 - INFO - HTTP Request: GET https://chroma-onnx-models.s3.amazonaws.com/all-MiniLM-L6-v2/onnx.tar.gz "HTTP/1.1 200 OK"
 2025-05-13 15:27:13,747 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:45:15,382 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:45:15,803 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:51:12,687 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:51:13,954 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:51:27,587 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:51:28,500 - INFO - Question: 연장수당은?  | Answer: 연장수당은 근로자가 정해진 근무시간을 초과하여 근무하게 될 경우에 추가로 받는 급여를 말합니다. 시스템에서는 연장수당을 관리할 수 있습니다. (manual.pdf, p.35) | Sources: ['manual.pdf']
+2025-05-13 15:52:08,438 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:52:09,608 - INFO - Question: 연장수당은 주 몇시간 초과해야 받을수 있어?  | Answer: 연장수당은 일정한 근로시간을 초과하여 근무할 경우에 지급됩니다. 연장수당을 받을 수 있는 시간에 대한 상세한 내용은 근로기준법에 따라 다를 수 있으므로 해당 법률을 참고하시기 바랍니다. | Sources: ['manual.pdf']
+2025-05-13 15:52:28,709 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:52:29,897 - INFO - Question: 비밀번호는?  | Answer: 비밀번호는 시스템에 로그인할 때 입력하는 문자열로, 사용자 개인의 정보를 보호하기 위해 설정합니다. 기본적으로 시스템은 보안을 강화하기 위해 비밀번호 요구사항을 설정하고 있습니다.비밀번호는 최소 8자 이상의 문자와 숫자를 포함해야 합니다. | Sources: ['manual.pdf']
+2025-05-13 15:53:13,043 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:53:13,371 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:53:29,694 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:53:30,589 - INFO - Question: 비밀번호 잃어버리면 | Answer: 비밀번호를 잃어버렸을 경우, 시스템 관리자에게 연락하여 임시 비밀번호를 받아야 합니다. 임시 비밀번호를 받은 후에는 로그인하여 새로운 비밀번호를 설정해야 합니다. | Sources: ['manual.pdf']
+2025-05-13 15:53:54,633 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:53:54,793 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:54:08,008 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:54:08,861 - INFO - Question: 주휴수당은?  | Answer: 주휴수당은 건설정보시스템에서 제공되지 않습니다. 따라서 해당 정보를 확인하려면 다른 경로를 통해 찾으셔야 합니다. | Sources: ['manual.pdf']
+2025-05-13 15:54:43,900 - INFO - Anonymized telemetry enabled. See                     https://docs.trychroma.com/telemetry for more information.
+2025-05-13 15:54:44,070 - INFO - Load pretrained SentenceTransformer: all-MiniLM-L6-v2
+2025-05-13 15:54:55,385 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:54:56,668 - INFO - Question: 주휴수당은?  | Answer: 근로자의 계약서상에 있는 소정근로일을 개근하고, 해당 주의 일주일의 계약이 모두 있는 경우에 발생함. 예를 들어 소정근로일이 월화수목금이라면 월화수목금 근로한 근로자의 계약이 월~일까지 모두 있어야 주휴수당이 발생합니다. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', '최헌']
+2025-05-13 15:55:11,052 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:55:12,100 - INFO - Question: 연장수당은 ? | Answer: 주간 40시간 초과, 일 8시간 초과하면 발생합니다. 예를 들어 월화수목금토까지 8시간씩 48시간 일했다면 8시간이 연장수당으로 책정됩니다. | Sources: ['from_excel.json', '김도경', 'from_excel.json', '최헌 가라사대', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
+2025-05-13 15:55:21,069 - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 200 OK"
+2025-05-13 15:55:21,825 - INFO - Question: 비밀번호 분실 | Answer: 로그인 화면에 보면 비밀번호 찾기를 눌른 후 본인확인을 통해 비밀번호를 찾을 수 있어. | Sources: ['from_excel.json', '최헌 가라사대', 'from_excel.json', '김도경', '20250320_사용자 매뉴얼(시공,건설사업관리)_v1.53(근무시간변경_안전지수_안심수당_추가).json']
