@@ -6,7 +6,6 @@ from transformers import AutoTokenizer, AutoModel
 import httpx
 import json
 from fastapi.middleware.cors import CORSMiddleware
-import logging
 import os
 from dotenv import load_dotenv
 import gc
@@ -18,6 +17,10 @@ from watchdog.events import FileSystemEventHandler
 import asyncio
 import time
 from datetime import datetime
+from utils.logger import get_logger
+
+# 모듈별로 로거 생성
+logger = get_logger(__name__)
 
 # 프로젝트 루트 디렉토리 설정
 ROOT_DIR = Path(__file__).parent.parent
@@ -25,28 +28,17 @@ VECTOR_DB_PATH = ROOT_DIR / "vector_db"
 DOCS_DIR = ROOT_DIR / "docs"
 ENHANCED_FAQ_PATH = DOCS_DIR / "enhanced_qa_pairs.xlsx"
 FRONTEND_BUILD_DIR = ROOT_DIR / "frontend" / "build"
+LOGS_DIR = ROOT_DIR / "logs"  # 로그 디렉토리 추가
 
 # 디렉토리 존재 확인 및 생성
 VECTOR_DB_PATH.mkdir(parents=True, exist_ok=True)
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)  # 로그 디렉토리 생성
 
 load_dotenv()  # .env 파일 읽기
 
 # 환경 변수에서 API 키 불러오기
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-
-#그록3 로깅 설정
-logging.basicConfig(
-    filename=ROOT_DIR / "query_logs.log",
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# 콘솔 출력을 위한 핸들러 추가
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logging.getLogger().addHandler(console_handler)
 
 # 모델 캐시 디렉토리 설정
 cache_dir = ROOT_DIR / "model_cache"
@@ -320,18 +312,13 @@ async def ask_question(q: Question):
             for example in structured_answer['examples']:
                 if isinstance(example, dict):
                     # 딕셔너리 형태의 예시를 읽기 쉽게 포맷팅
-                    # scenario = example.get('scenario', '')
-                    # result = example.get('result', '')
-                    # explanation = example.get('explanation', '')
-                    # formatted_example = f"• {scenario}\n  → {result}\n  ☞ {explanation}"
-                    # answer_parts.append(f"{formatted_example}\n")
-                    
                     scenario = example.get('scenario', '')
                     results = [v for k, v in example.items() if k.startswith('result')]
                     result_str = ", ".join(results) if results else "결과 없음"
                     explanation = example.get('explanation', result_str)
                     formatted_example = f"• {scenario}\n  → {result_str}\n  ☞ {explanation}"
                     answer_parts.append(f"{formatted_example}\n")
+                          
                 # 예시 섹션 추가
                 else:
                     # 일반 문자열 형태의 예시
