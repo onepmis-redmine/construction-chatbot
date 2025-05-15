@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
 import chromadb
 import torch
@@ -49,9 +49,6 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 
 # FastAPI 앱 생성
 app = FastAPI()
-
-# 프론트엔드 정적 파일 서빙 설정
-app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
 
 # CORS 설정
 app.add_middleware(
@@ -259,7 +256,7 @@ def find_faq_match(query: str, threshold: float = 0.6):
         return None
 
 @app.post("/ask")
-def ask_question(q: Question):
+async def ask_question(q: Question):
     query = q.query.strip()
     logging.info(f"Received question: {query}")
     
@@ -353,11 +350,14 @@ def ask_question(q: Question):
         }
 
 @app.get("/health")
-def health_check():
+async def health_check():
     return {"status": "ok"}
 
 @app.get("/reload-faq")
-def reload_faq():
+async def reload_faq():
     """FAQ 데이터를 재로드합니다."""
     load_enhanced_faq()
     return {"status": "FAQ reloaded"}
+
+# 마지막으로 정적 파일 서빙 설정
+app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
