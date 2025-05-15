@@ -273,17 +273,18 @@ async def ask_question(q: Question):
         
         logging.info(f"Vector search results: {results}")
         
-        if not results["ids"]:
+        # 결과가 비어있는 경우 처리
+        if not results["ids"] or len(results["ids"][0]) == 0:
             logging.warning("No results found in vector database")
             return {
-                "answer": "죄송합니다. 해당 질문에 대한 답변을 찾을 수 없습니다.",
+                "answer": "죄송합니다. 해당 질문에 대한 답변을 찾을 수 없습니다. 데이터베이스에 데이터가 아직 로드되지 않았을 수 있습니다.",
                 "sources": [],
                 "is_faq": False
             }
             
         # 가장 유사한 문서 찾기
         best_match_idx = 0
-        best_match_distance = results["distances"][0][0]
+        best_match_distance = results["distances"][0][best_match_idx]
         
         logging.info(f"Best match distance: {best_match_distance}")
         
@@ -358,6 +359,51 @@ async def reload_faq():
     """FAQ 데이터를 재로드합니다."""
     load_enhanced_faq()
     return {"status": "FAQ reloaded"}
+
+@app.get("/init-db")
+async def initialize_database():
+    """벡터 데이터베이스를 초기화합니다."""
+    try:
+        # FAQ 데이터 로드
+        if not load_enhanced_faq():
+            return {"status": "error", "message": "FAQ 데이터 로드 실패"}
+        
+        # 기존 컬렉션 삭제 후 재생성
+        try:
+            chroma_client.delete_collection(name="construction_manuals")
+        except:
+            pass
+        
+        collection = chroma_client.create_collection(name="construction_manuals")
+        
+        # FAQ 데이터를 벡터 데이터베이스에 추가
+        for idx, row in faq_data.iterrows():
+            try:
+                variations = json.loads(row['question_variations'])
+                structured_answer = json.loads(row['structured_answer'])
+                keywords = json.loads(row['keywords'])
+                
+                # 각 질문 변형에 대해 임베딩 생성 및 저장
+                for q in variations:
+                    embedding = get_embeddings(q)
+                    collection.add(
+                        embeddings=[embedding],
+                        documents=[q],
+                        metadatas=[{
+                            "original_question": q,
+                            "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                            "keywords": json.dumps(keywords, ensure_ascii=False)
+                        }],
+                        ids=[f"qa_{idx}_{variations.index(q)}"]
+                    )
+            except Exception as e:
+                logging.error(f"Error processing row {idx}: {e}")
+                continue
+        
+        return {"status": "success", "message": "데이터베이스가 성공적으로 초기화되었습니다."}
+    except Exception as e:
+        logging.error(f"Error initializing database: {e}")
+        return {"status": "error", "message": str(e)}
 
 # 마지막으로 정적 파일 서빙 설정
 app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
