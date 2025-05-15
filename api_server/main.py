@@ -19,6 +19,7 @@ ROOT_DIR = Path(__file__).parent.parent
 VECTOR_DB_PATH = ROOT_DIR / "vector_db"
 DOCS_DIR = ROOT_DIR / "docs"
 ENHANCED_FAQ_PATH = DOCS_DIR / "enhanced_qa_pairs.xlsx"
+FRONTEND_BUILD_DIR = ROOT_DIR / "frontend" / "build"
 
 # 디렉토리 존재 확인 및 생성
 VECTOR_DB_PATH.mkdir(parents=True, exist_ok=True)
@@ -50,7 +51,7 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 app = FastAPI()
 
 # 프론트엔드 정적 파일 서빙 설정
-app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="frontend")
+app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
 
 # CORS 설정
 app.add_middleware(
