@@ -360,13 +360,14 @@ async def reload_faq():
     load_enhanced_faq()
     return {"status": "FAQ reloaded"}
 
-@app.get("/init-db")
-async def initialize_database():
+# 벡터 DB 초기화 함수
+async def initialize_vector_db():
     """벡터 데이터베이스를 초기화합니다."""
     try:
         # FAQ 데이터 로드
         if not load_enhanced_faq():
-            return {"status": "error", "message": "FAQ 데이터 로드 실패"}
+            logging.error("FAQ 데이터 로드 실패")
+            return False
         
         # 기존 컬렉션 삭제 후 재생성
         try:
@@ -374,6 +375,7 @@ async def initialize_database():
         except:
             pass
         
+        global collection
         collection = chroma_client.create_collection(name="construction_manuals")
         
         # FAQ 데이터를 벡터 데이터베이스에 추가
@@ -400,10 +402,27 @@ async def initialize_database():
                 logging.error(f"Error processing row {idx}: {e}")
                 continue
         
-        return {"status": "success", "message": "데이터베이스가 성공적으로 초기화되었습니다."}
+        logging.info("벡터 데이터베이스 초기화 완료")
+        return True
     except Exception as e:
         logging.error(f"Error initializing database: {e}")
-        return {"status": "error", "message": str(e)}
+        return False
+
+app.on_event("startup")
+async def startup_event():
+    """서버 시작 시 실행되는 이벤트 핸들러"""
+    logging.info("서버 시작: 벡터 데이터베이스 초기화 시작")
+    await initialize_vector_db()
 
 # 마지막으로 정적 파일 서빙 설정
 app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
+
+# 수동 초기화용 엔드포인트 (필요시 재초기화 가능)
+@app.get("/init-db")
+async def manual_initialize_database():
+    """벡터 데이터베이스를 수동으로 초기화합니다."""
+    success = await initialize_vector_db()
+    if success:
+        return {"status": "success", "message": "데이터베이스가 성공적으로 초기화되었습니다."}
+    else:
+        return {"status": "error", "message": "데이터베이스 초기화 중 오류가 발생했습니다."}
