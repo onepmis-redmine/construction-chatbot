@@ -1,1 +1,14 @@
 .env
+
+# 로그 파일
+*.log
+logs/
+
+# 벡터 데이터베이스 파일
+vector_db/*/
+vector_db/*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

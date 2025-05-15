@@ -10,13 +10,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 import chromadb
 from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
-import google.generativeai as genai
-from dotenv import load_dotenv
-
-# 환경 변수 로드
-load_dotenv()
-GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-genai.configure(api_key=GOOGLE_API_KEY)
 
 # 디렉토리 경로
 DOCS_DIR = Path("docs/")
@@ -25,7 +18,6 @@ CHUNKS_DIR = Path("chunks/")
 DB_DIR = Path("vector_db/")
 EXCEL_PATH = Path("docs/qa_pairs.xlsx")
 EXCEL_CHUNKS_PATH = Path("chunks/from_excel.json")
-ENHANCED_FAQ_PATH = Path("docs/enhanced_qa_pairs.xlsx")
 STATE_FILE = Path("pipeline_state.json")
 
 # 디렉토리 생성
@@ -150,92 +142,6 @@ def process_excel(state):
         return True
     return False
 
-def enhance_qa_pair(model, question: str, answer: str) -> dict:
-    """질문-답변 쌍을 구조화합니다."""
-    prompt = f"""
-다음 질문-답변 쌍을 구조화된 형식으로 변환해주세요.
-결과는 반드시 올바른 JSON 형식이어야 합니다.
-
-원본 질문: {question}
-원본 답변: {answer}
-
-다음 구조로 JSON을 생성해주세요:
-{{
-    "question_variations": [
-        "변형된 질문 1",
-        "변형된 질문 2",
-        "변형된 질문 3"
-    ],
-    "structured_answer": {{
-        "basic_rules": [
-            "기본 규칙/조건 1",
-            "기본 규칙/조건 2"
-        ],
-        "examples": [
-            "구체적인 예시 1",
-            "구체적인 예시 2"
-        ],
-        "cautions": [
-            "주의사항 1",
-            "주의사항 2"
-        ]
-    }},
-    "keywords": [
-        "키워드1",
-        "키워드2",
-        "키워드3"
-    ]
-}}
-
-응답은 반드시 위와 같은 형식의 유효한 JSON이어야 합니다.
-"""
-    
-    try:
-        response = model.generate_content(prompt)
-        json_str = response.text
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0].strip()
-        elif "```" in json_str:
-            json_str = json_str.split("```")[1].strip()
-        
-        return json.loads(json_str)
-    except Exception as e:
-        print(f"❌ FAQ 구조화 오류: {str(e)}")
-        return None
-
-def process_excel_enhanced(state):
-    """엑셀 Q&A를 구조화된 형식으로 변환합니다."""
-    if not EXCEL_PATH.exists():
-        return False
-    
-    current_mtime = get_file_mtime(EXCEL_PATH)
-    last_mtime = state.get(str(EXCEL_PATH) + "_enhanced", "")
-    
-    if current_mtime != last_mtime or not ENHANCED_FAQ_PATH.exists():
-        print("FAQ 구조화 시작...")
-        df = pd.read_excel(EXCEL_PATH)
-        enhanced_data = []
-        
-        # Gemini 모델 초기화
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        
-        for idx, row in tqdm(df.iterrows(), total=len(df), desc="FAQ 구조화 중"):
-            question = str(row["질문"]).strip()
-            answer = str(row["답변"]).strip()
-            
-            if question and answer:
-                enhanced = enhance_qa_pair(model, question, answer)
-                if enhanced:
-                    enhanced_data.append(enhanced)
-        
-        # 구조화된 데이터를 엑셀로 저장
-        output_df = pd.DataFrame(enhanced_data)
-        output_df.to_excel(ENHANCED_FAQ_PATH, index=False)
-        state[str(EXCEL_PATH) + "_enhanced"] = current_mtime
-        print(f"✅ FAQ 구조화 완료: {len(enhanced_data)}개 항목")
-        return True
-    return False
-
 def embed_chunks(state):
     """청크를 벡터 데이터베이스에 임베딩합니다."""
     batch_size = 32
@@ -288,7 +194,6 @@ def main():
     updated |= process_documents(state)
     updated |= chunk_texts(state)
     updated |= process_excel(state)
-    updated |= process_excel_enhanced(state)  # FAQ 구조화 추가
     updated |= embed_chunks(state)
     if updated:
         save_state(state)
