@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 import gc
 from pathlib import Path
 import pandas as pd
+from fastapi.staticfiles import StaticFiles
 
 # 프로젝트 루트 디렉토리 설정
 ROOT_DIR = Path(__file__).parent.parent
@@ -48,19 +49,20 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 # FastAPI 앱 생성
 app = FastAPI()
 
-#frontend React 프로젝트 추가 시작
-# CORS 설정 (React 개발 서버에서 오는 요청 허용)
+# 프론트엔드 정적 파일 서빙 설정
+app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="frontend")
+
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "https://construction-chatbot-api.onrender.com",  # Render API 도메인
+        "https://construction-chatbot-api.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-#frontend React 프로젝트 추가 끝
 
 # ChromaDB 클라이언트 설정
 chroma_client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
