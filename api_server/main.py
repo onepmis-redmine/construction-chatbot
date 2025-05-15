@@ -320,11 +320,19 @@ async def ask_question(q: Question):
             for example in structured_answer['examples']:
                 if isinstance(example, dict):
                     # 딕셔너리 형태의 예시를 읽기 쉽게 포맷팅
+                    # scenario = example.get('scenario', '')
+                    # result = example.get('result', '')
+                    # explanation = example.get('explanation', '')
+                    # formatted_example = f"• {scenario}\n  → {result}\n  ☞ {explanation}"
+                    # answer_parts.append(f"{formatted_example}\n")
+                    
                     scenario = example.get('scenario', '')
-                    result = example.get('result', '')
-                    explanation = example.get('explanation', '')
-                    formatted_example = f"• {scenario}\n  → {result}\n  ☞ {explanation}"
+                    results = [v for k, v in example.items() if k.startswith('result')]
+                    result_str = ", ".join(results) if results else "결과 없음"
+                    explanation = example.get('explanation', result_str)
+                    formatted_example = f"• {scenario}\n  → {result_str}\n  ☞ {explanation}"
                     answer_parts.append(f"{formatted_example}\n")
+                # 예시 섹션 추가
                 else:
                     # 일반 문자열 형태의 예시
                     answer_parts.append(f"• {example}\n")

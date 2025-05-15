@@ -21,26 +21,34 @@ http://localhost:3000
 비밀번호를 잃어버렸어. 어떻게 해?
 
 
-github 계정
+
+# github 계정
 https://github.com/onepmis-redmine/construction-chatbot
 onepmis-redmine
 onepmis-redmine@naver.com / onepmis123
+# git 반영하기
+cd Documents\construction-chatbot
+git add .
+git commit -m "코멘트"
+git push origin main
 
 
-Render에 FastAPI 백엔드 배포하기
+# Render에 FastAPI 백엔드 배포하기
 https://render.com 
 행정망에서는 더이상 진행이 안됨. 
 노트북에 다시 세팅해서 진행해봐야겠음. 정리도 좀 하고
 
 
 
-faq구조최적화ai
+# faq구조최적화ai
 https://makersuite.google.com/app/apikey
 내구글계정
 
-Cursor ai
+# Cursor ai
 https://www.cursor.com/
 내구글계정
+
+
 
 
 🧪 UI 개선 (Material UI, Tailwind 등)
