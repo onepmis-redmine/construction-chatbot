@@ -52,7 +52,10 @@ app = FastAPI()
 # CORS 설정 (React 개발 서버에서 오는 요청 허용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://construction-chatbot-api.onrender.com",  # Render API 도메인
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

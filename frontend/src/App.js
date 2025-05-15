@@ -55,7 +55,7 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post("http://localhost:8000/ask", {
+      const response = await axios.post("https://construction-chatbot-api.onrender.com/ask", {
         query: input,
       });
 
