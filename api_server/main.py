@@ -364,21 +364,36 @@ async def reload_faq():
 async def initialize_vector_db():
     """벡터 데이터베이스를 초기화합니다."""
     try:
+        logging.info("벡터 DB 초기화 시작")
+        
         # FAQ 데이터 로드
+        logging.info(f"FAQ 데이터 파일 경로: {ENHANCED_FAQ_PATH}")
+        if not ENHANCED_FAQ_PATH.exists():
+            logging.error(f"FAQ 데이터 파일이 존재하지 않음: {ENHANCED_FAQ_PATH}")
+            return False
+            
         if not load_enhanced_faq():
             logging.error("FAQ 데이터 로드 실패")
             return False
         
+        logging.info(f"FAQ 데이터 로드 완료: {len(faq_data) if faq_data is not None else 0}개 항목")
+        
         # 기존 컬렉션 삭제 후 재생성
         try:
+            logging.info("기존 컬렉션 삭제 시도")
             chroma_client.delete_collection(name="construction_manuals")
-        except:
-            pass
+            logging.info("기존 컬렉션 삭제 완료")
+        except Exception as e:
+            logging.warning(f"기존 컬렉션 삭제 중 예외 발생 (무시 가능): {e}")
         
+        logging.info("새 컬렉션 생성 시작")
         global collection
         collection = chroma_client.create_collection(name="construction_manuals")
+        logging.info("새 컬렉션 생성 완료")
         
         # FAQ 데이터를 벡터 데이터베이스에 추가
+        added_count = 0
+        error_count = 0
         for idx, row in faq_data.iterrows():
             try:
                 variations = json.loads(row['question_variations'])
@@ -398,14 +413,16 @@ async def initialize_vector_db():
                         }],
                         ids=[f"qa_{idx}_{variations.index(q)}"]
                     )
+                    added_count += 1
             except Exception as e:
+                error_count += 1
                 logging.error(f"Error processing row {idx}: {e}")
                 continue
         
-        logging.info("벡터 데이터베이스 초기화 완료")
+        logging.info(f"벡터 데이터베이스 초기화 완료: {added_count}개 추가됨, {error_count}개 실패")
         return True
     except Exception as e:
-        logging.error(f"Error initializing database: {e}")
+        logging.error(f"벡터 데이터베이스 초기화 중 오류 발생: {e}")
         return False
 
 app.on_event("startup")
