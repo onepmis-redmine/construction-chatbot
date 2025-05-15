@@ -271,7 +271,8 @@ class QAProcessor:
             logger.error(f"Error in create_embeddings: {e}")
             raise
 
-def main():
+def process_qa_file():
+    """FAQ 파일을 처리하고 벡터 데이터베이스를 업데이트합니다."""
     processor = QAProcessor()
     
     # FAQ 구조화
@@ -283,6 +284,16 @@ def main():
     processor.create_embeddings(enhanced_data)
     
     logger.info("Process completed successfully!")
+    return True
+
+def main():
+    """메인 함수"""
+    try:
+        process_qa_file()
+    except Exception as e:
+        logger.error(f"Error in main process: {e}")
+        return False
+    return True
 
 if __name__ == "__main__":
     main() 

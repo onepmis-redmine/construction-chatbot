@@ -13,6 +13,11 @@ import gc
 from pathlib import Path
 import pandas as pd
 from fastapi.staticfiles import StaticFiles
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import asyncio
+import time
+from datetime import datetime
 
 # 프로젝트 루트 디렉토리 설정
 ROOT_DIR = Path(__file__).parent.parent
@@ -378,6 +383,10 @@ async def initialize_vector_db():
         
         logging.info(f"FAQ 데이터 로드 완료: {len(faq_data) if faq_data is not None else 0}개 항목")
         
+        if faq_data is None or len(faq_data) == 0:
+            logging.error("FAQ 데이터가 비어있습니다.")
+            return False
+        
         # 기존 컬렉션 삭제 후 재생성
         try:
             logging.info("기존 컬렉션 삭제 시도")
@@ -394,42 +403,123 @@ async def initialize_vector_db():
         # FAQ 데이터를 벡터 데이터베이스에 추가
         added_count = 0
         error_count = 0
+        
+        logging.info("FAQ 데이터 처리 시작")
         for idx, row in faq_data.iterrows():
             try:
-                variations = json.loads(row['question_variations'])
-                structured_answer = json.loads(row['structured_answer'])
-                keywords = json.loads(row['keywords'])
+                logging.info(f"FAQ 항목 {idx + 1} 처리 중...")
+                
+                # JSON 필드 파싱
+                try:
+                    variations = json.loads(row['question_variations'])
+                    structured_answer = json.loads(row['structured_answer'])
+                    keywords = json.loads(row['keywords'])
+                except json.JSONDecodeError as je:
+                    logging.error(f"JSON 파싱 오류 (행 {idx}): {je}")
+                    error_count += 1
+                    continue
                 
                 # 각 질문 변형에 대해 임베딩 생성 및 저장
                 for q in variations:
-                    embedding = get_embeddings(q)
-                    collection.add(
-                        embeddings=[embedding],
-                        documents=[q],
-                        metadatas=[{
-                            "original_question": q,
-                            "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
-                            "keywords": json.dumps(keywords, ensure_ascii=False)
-                        }],
-                        ids=[f"qa_{idx}_{variations.index(q)}"]
-                    )
-                    added_count += 1
+                    try:
+                        embedding = get_embeddings(q)
+                        collection.add(
+                            embeddings=[embedding],
+                            documents=[q],
+                            metadatas=[{
+                                "original_question": q,
+                                "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                                "keywords": json.dumps(keywords, ensure_ascii=False)
+                            }],
+                            ids=[f"qa_{idx}_{variations.index(q)}"]
+                        )
+                        added_count += 1
+                        logging.info(f"질문 변형 '{q}' 추가됨")
+                    except Exception as e:
+                        logging.error(f"임베딩 생성/저장 오류 (행 {idx}, 질문: {q}): {e}")
+                        error_count += 1
             except Exception as e:
                 error_count += 1
-                logging.error(f"Error processing row {idx}: {e}")
+                logging.error(f"행 {idx} 처리 중 오류 발생: {e}")
                 continue
         
         logging.info(f"벡터 데이터베이스 초기화 완료: {added_count}개 추가됨, {error_count}개 실패")
+        
+        # 벡터 DB 검증
+        if added_count == 0:
+            logging.error("벡터 데이터베이스에 데이터가 추가되지 않았습니다.")
+            return False
+            
+        # 테스트 쿼리 실행
+        test_result = collection.query(
+            query_embeddings=[get_embeddings("테스트 쿼리")],
+            n_results=1
+        )
+        
+        if not test_result["ids"] or len(test_result["ids"][0]) == 0:
+            logging.error("벡터 데이터베이스 검증 실패: 테스트 쿼리 결과 없음")
+            return False
+            
+        logging.info("벡터 데이터베이스 검증 완료")
         return True
+        
     except Exception as e:
         logging.error(f"벡터 데이터베이스 초기화 중 오류 발생: {e}")
         return False
 
-app.on_event("startup")
+# 파일 변경 감지를 위한 전역 변수
+last_modified_time = None
+file_check_interval = 5  # 5초마다 확인
+
+class ExcelFileHandler(FileSystemEventHandler):
+    def __init__(self, callback):
+        self.callback = callback
+        self.last_modified = 0
+        
+    def on_modified(self, event):
+        if not event.is_directory and event.src_path.endswith('qa_pairs.xlsx'):
+            # 중복 이벤트 방지를 위한 쿨다운 체크
+            current_time = time.time()
+            if current_time - self.last_modified > 1:  # 1초 쿨다운
+                self.last_modified = current_time
+                asyncio.create_task(self.callback())
+
+async def check_file_changes():
+    """qa_pairs.xlsx 파일의 변경을 주기적으로 확인합니다."""
+    global last_modified_time
+    
+    while True:
+        try:
+            if ENHANCED_FAQ_PATH.exists():
+                current_mtime = os.path.getmtime(ENHANCED_FAQ_PATH)
+                if last_modified_time is None:
+                    last_modified_time = current_mtime
+                elif current_mtime > last_modified_time:
+                    logging.info("qa_pairs.xlsx 파일이 변경되었습니다. 벡터 DB를 업데이트합니다.")
+                    last_modified_time = current_mtime
+                    await initialize_vector_db()
+            await asyncio.sleep(file_check_interval)
+        except Exception as e:
+            logging.error(f"파일 변경 확인 중 오류 발생: {e}")
+            await asyncio.sleep(file_check_interval)
+
+@app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행되는 이벤트 핸들러"""
     logging.info("서버 시작: 벡터 데이터베이스 초기화 시작")
+    
+    # 초기 벡터 DB 초기화
     await initialize_vector_db()
+    
+    # 파일 감시 시작
+    global last_modified_time
+    if ENHANCED_FAQ_PATH.exists():
+        last_modified_time = os.path.getmtime(ENHANCED_FAQ_PATH)
+    
+    # 파일 변경 감지 태스크 시작
+    asyncio.create_task(check_file_changes())
+    
+    logging.info("파일 감시 시작됨")
 
 # 마지막으로 정적 파일 서빙 설정
 app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
