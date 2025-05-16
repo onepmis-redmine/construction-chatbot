@@ -47,17 +47,24 @@ cache_dir.mkdir(parents=True, exist_ok=True)
 # FastAPI 앱 생성
 app = FastAPI()
 
-# CORS 설정
+# CORS 설정 - localhost 우선
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
+        "http://localhost:3000",  # 로컬 개발 환경 우선
         "https://construction-chatbot-api.onrender.com",
+        "*",  # 개발 중에는 모든 출처 허용 (프로덕션에서는 제거)
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 개발 환경 감지
+def is_development_request(request: Request) -> bool:
+    """요청이 로컬 개발 환경에서 온 것인지 확인합니다."""
+    origin = request.headers.get("origin", "")
+    return origin.startswith("http://localhost:")
 
 # ChromaDB 클라이언트 설정
 chroma_client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
@@ -71,19 +78,19 @@ def load_enhanced_faq():
     global faq_data
     try:
         if not ENHANCED_FAQ_PATH.exists():
-            logging.error(f"Enhanced FAQ file not found at: {ENHANCED_FAQ_PATH}")
+            logger.error(f"Enhanced FAQ file not found at: {ENHANCED_FAQ_PATH}")
             return False
             
         faq_data = pd.read_excel(ENHANCED_FAQ_PATH)
         
         if faq_data.empty:
-            logging.error("Enhanced FAQ file is empty")
+            logger.error("Enhanced FAQ file is empty")
             return False
         
         # 데이터 형식 검증
         for col in ['question_variations', 'structured_answer', 'keywords']:
             if col not in faq_data.columns:
-                logging.error(f"Required column '{col}' not found in FAQ data")
+                logger.error(f"Required column '{col}' not found in FAQ data")
                 return False
         
         # JSON 필드 파싱 검증
@@ -93,16 +100,16 @@ def load_enhanced_faq():
                     if isinstance(row[field], str):
                         json.loads(row[field])
                     else:
-                        logging.warning(f"Row {idx}: {field} is not a string, converting to string")
+                        logger.warning(f"Row {idx}: {field} is not a string, converting to string")
                         faq_data.at[idx, field] = json.dumps(row[field], ensure_ascii=False)
             except Exception as e:
-                logging.error(f"Error parsing JSON in row {idx}: {e}")
+                logger.error(f"Error parsing JSON in row {idx}: {e}")
                 return False
             
-        logging.info(f"Enhanced FAQ data loaded successfully: {len(faq_data)} entries found")
+        logger.info(f"Enhanced FAQ data loaded successfully: {len(faq_data)} entries found")
         return True
     except Exception as e:
-        logging.error(f"Error loading enhanced FAQ: {e}")
+        logger.error(f"Error loading enhanced FAQ: {e}")
         faq_data = None
         return False
 
@@ -197,12 +204,12 @@ def call_openrouter(prompt: str) -> str:
 def find_faq_match(query: str, threshold: float = 0.6):
     """구조화된 FAQ에서 가장 적절한 답변을 찾습니다."""
     if faq_data is None or faq_data.empty:
-        logging.error("FAQ data is not loaded")
+        logger.error("FAQ data is not loaded")
         return None
     
     try:
-        logging.info(f"Searching for match to query: {query}")
-        logging.info(f"Available FAQ entries: {len(faq_data)}")
+        logger.info(f"Searching for match to query: {query}")
+        logger.info(f"Available FAQ entries: {len(faq_data)}")
         
         # 쿼리 전처리
         query = query.lower().strip()
@@ -219,7 +226,7 @@ def find_faq_match(query: str, threshold: float = 0.6):
         for idx, row in faq_data.iterrows():
             try:
                 variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
-                logging.info(f"Row {idx} variations: {variations}")
+                logger.info(f"Row {idx} variations: {variations}")
                 
                 for q in variations:
                     # 질문 전처리
@@ -234,33 +241,37 @@ def find_faq_match(query: str, threshold: float = 0.6):
                         dim=0
                     ).item()
                     
-                    logging.info(f"Comparing '{query}' with '{q}': similarity = {similarity}")
+                    logger.info(f"Comparing '{query}' with '{q}': similarity = {similarity}")
                     
                     if similarity > highest_similarity:
                         highest_similarity = similarity
                         best_match = row
-                        logging.info(f"New best match found: similarity = {similarity}")
+                        logger.info(f"New best match found: similarity = {similarity}")
             except Exception as e:
-                logging.error(f"Error processing row {idx}: {e}")
+                logger.error(f"Error processing row {idx}: {e}")
                 continue
         
-        logging.info(f"Best match similarity: {highest_similarity} (threshold: {threshold})")
+        logger.info(f"Best match similarity: {highest_similarity} (threshold: {threshold})")
         if highest_similarity >= threshold:
             return best_match
         return None
     except Exception as e:
-        logging.error(f"Error in find_faq_match: {e}")
+        logger.error(f"Error in find_faq_match: {e}")
         return None
 
 @app.post("/ask")
-async def ask_question(q: Question):
+async def ask_question(q: Question, request: Request):
     query = q.query.strip()
-    logging.info(f"Received question: {query}")
+    logger.info(f"Received question: {query}")
+    
+    # 개발 환경 감지
+    is_dev = is_development_request(request)
+    logger.info(f"Request from development environment: {is_dev}")
     
     try:
         # 벡터 검색 수행
         query_embedding = get_embeddings(query)
-        logging.info("Generated query embedding")
+        logger.info("Generated query embedding")
         
         results = collection.query(
             query_embeddings=[query_embedding],
@@ -268,29 +279,34 @@ async def ask_question(q: Question):
             include=["documents", "metadatas", "distances"]
         )
         
-        logging.info(f"Vector search results: {results}")
+        logger.info(f"Vector search results: {results}")
         
         # 결과가 비어있는 경우 처리
         if not results["ids"] or len(results["ids"][0]) == 0:
-            logging.warning("No results found in vector database")
+            logger.warning("No results found in vector database")
             return {
                 "answer": "죄송합니다. 해당 질문에 대한 답변을 찾을 수 없습니다. 데이터베이스에 데이터가 아직 로드되지 않았을 수 있습니다.",
                 "sources": [],
-                "is_faq": False
+                "is_faq": False,
+                "is_dev": is_dev
             }
             
         # 가장 유사한 문서 찾기
         best_match_idx = 0
         best_match_distance = results["distances"][0][best_match_idx]
         
-        logging.info(f"Best match distance: {best_match_distance}")
+        logger.info(f"Best match distance: {best_match_distance}")
         
-        if best_match_distance > 1.5:  # 거리가 너무 멀면 관련이 없는 것으로 판단
-            logging.warning(f"Best match distance ({best_match_distance}) too high")
+        # 개발 환경에서는 더 관대한 임계값 적용
+        threshold = 1.8 if is_dev else 1.5
+        
+        if best_match_distance > threshold:  # 거리가 너무 멀면 관련이 없는 것으로 판단
+            logger.warning(f"Best match distance ({best_match_distance}) too high")
             return {
                 "answer": "죄송합니다. 해당 질문과 충분히 관련된 답변을 찾지 못했습니다.",
                 "sources": [],
-                "is_faq": False
+                "is_faq": False,
+                "is_dev": is_dev
             }
             
         # 메타데이터에서 구조화된 답변 추출
@@ -313,13 +329,27 @@ async def ask_question(q: Question):
                 if isinstance(example, dict):
                     # 딕셔너리 형태의 예시를 읽기 쉽게 포맷팅
                     scenario = example.get('scenario', '')
-                    results = [v for k, v in example.items() if k.startswith('result')]
-                    result_str = ", ".join(results) if results else "결과 없음"
-                    explanation = example.get('explanation', result_str)
-                    formatted_example = f"• {scenario}\n  → {result_str}\n  ☞ {explanation}"
+                    
+                    # 결과 필드(result로 시작하는 키) 값들 수집
+                    result_items = []
+                    for k, v in example.items():
+                        if k.startswith('result'):
+                            result_items.append(f"{v}")
+                    
+                    # 결과 문자열 생성
+                    result_str = ", ".join(result_items) if result_items else ""
+                    
+                    # 설명 필드가 있는 경우에만 사용
+                    explanation = example.get('explanation', '')
+                    
+                    # 예시 문자열 생성
+                    formatted_example = f"• {scenario}"
+                    if result_str:
+                        formatted_example += f"\n  → {result_str}"
+                    if explanation and explanation != result_str:  # 설명이 결과와 다른 경우에만 표시
+                        formatted_example += f"\n  ☞ {explanation}"
+                    
                     answer_parts.append(f"{formatted_example}\n")
-                          
-                # 예시 섹션 추가
                 else:
                     # 일반 문자열 형태의 예시
                     answer_parts.append(f"• {example}\n")
@@ -333,21 +363,34 @@ async def ask_question(q: Question):
         # 모든 섹션을 결합하고 불필요한 공백 제거
         answer = "".join(answer_parts).strip()
         
+        # 개발 환경에서는 추가 디버그 정보 제공
+        debug_info = {}
+        if is_dev:
+            debug_info = {
+                "match_distance": best_match_distance,
+                "threshold": threshold,
+                "original_query": query,
+                "matched_document": results["documents"][0][best_match_idx]
+            }
+        
         return {
             "answer": answer,
             "sources": ["FAQ 데이터베이스"],
             "is_faq": True,
             "original_question": metadata.get("original_question", "Unknown"),
-            "match_distance": best_match_distance
+            "match_distance": best_match_distance,
+            "is_dev": is_dev,
+            "debug_info": debug_info if is_dev else {}
         }
         
     except Exception as e:
-        logging.error(f"Error processing question: {e}")
+        logger.error(f"Error processing question: {e}")
         return {
             "answer": "죄송합니다. 질문 처리 중 오류가 발생했습니다.",
             "sources": [],
             "is_faq": False,
-            "error": str(e)
+            "error": str(e) if is_dev else "Internal server error",
+            "is_dev": is_dev
         }
 
 @app.get("/health")
@@ -364,45 +407,45 @@ async def reload_faq():
 async def initialize_vector_db():
     """벡터 데이터베이스를 초기화합니다."""
     try:
-        logging.info("벡터 DB 초기화 시작")
+        logger.info("벡터 DB 초기화 시작")
         
         # FAQ 데이터 로드
-        logging.info(f"FAQ 데이터 파일 경로: {ENHANCED_FAQ_PATH}")
+        logger.info(f"FAQ 데이터 파일 경로: {ENHANCED_FAQ_PATH}")
         if not ENHANCED_FAQ_PATH.exists():
-            logging.error(f"FAQ 데이터 파일이 존재하지 않음: {ENHANCED_FAQ_PATH}")
+            logger.error(f"FAQ 데이터 파일이 존재하지 않음: {ENHANCED_FAQ_PATH}")
             return False
             
         if not load_enhanced_faq():
-            logging.error("FAQ 데이터 로드 실패")
+            logger.error("FAQ 데이터 로드 실패")
             return False
         
-        logging.info(f"FAQ 데이터 로드 완료: {len(faq_data) if faq_data is not None else 0}개 항목")
+        logger.info(f"FAQ 데이터 로드 완료: {len(faq_data) if faq_data is not None else 0}개 항목")
         
         if faq_data is None or len(faq_data) == 0:
-            logging.error("FAQ 데이터가 비어있습니다.")
+            logger.error("FAQ 데이터가 비어있습니다.")
             return False
         
         # 기존 컬렉션 삭제 후 재생성
         try:
-            logging.info("기존 컬렉션 삭제 시도")
+            logger.info("기존 컬렉션 삭제 시도")
             chroma_client.delete_collection(name="construction_manuals")
-            logging.info("기존 컬렉션 삭제 완료")
+            logger.info("기존 컬렉션 삭제 완료")
         except Exception as e:
-            logging.warning(f"기존 컬렉션 삭제 중 예외 발생 (무시 가능): {e}")
+            logger.warning(f"기존 컬렉션 삭제 중 예외 발생 (무시 가능): {e}")
         
-        logging.info("새 컬렉션 생성 시작")
+        logger.info("새 컬렉션 생성 시작")
         global collection
         collection = chroma_client.create_collection(name="construction_manuals")
-        logging.info("새 컬렉션 생성 완료")
+        logger.info("새 컬렉션 생성 완료")
         
         # FAQ 데이터를 벡터 데이터베이스에 추가
         added_count = 0
         error_count = 0
         
-        logging.info("FAQ 데이터 처리 시작")
+        logger.info("FAQ 데이터 처리 시작")
         for idx, row in faq_data.iterrows():
             try:
-                logging.info(f"FAQ 항목 {idx + 1} 처리 중...")
+                logger.info(f"FAQ 항목 {idx + 1} 처리 중...")
                 
                 # JSON 필드 파싱
                 try:
@@ -410,7 +453,7 @@ async def initialize_vector_db():
                     structured_answer = json.loads(row['structured_answer'])
                     keywords = json.loads(row['keywords'])
                 except json.JSONDecodeError as je:
-                    logging.error(f"JSON 파싱 오류 (행 {idx}): {je}")
+                    logger.error(f"JSON 파싱 오류 (행 {idx}): {je}")
                     error_count += 1
                     continue
                 
@@ -429,20 +472,20 @@ async def initialize_vector_db():
                             ids=[f"qa_{idx}_{variations.index(q)}"]
                         )
                         added_count += 1
-                        logging.info(f"질문 변형 '{q}' 추가됨")
+                        logger.info(f"질문 변형 '{q}' 추가됨")
                     except Exception as e:
-                        logging.error(f"임베딩 생성/저장 오류 (행 {idx}, 질문: {q}): {e}")
+                        logger.error(f"임베딩 생성/저장 오류 (행 {idx}, 질문: {q}): {e}")
                         error_count += 1
             except Exception as e:
                 error_count += 1
-                logging.error(f"행 {idx} 처리 중 오류 발생: {e}")
+                logger.error(f"행 {idx} 처리 중 오류 발생: {e}")
                 continue
         
-        logging.info(f"벡터 데이터베이스 초기화 완료: {added_count}개 추가됨, {error_count}개 실패")
+        logger.info(f"벡터 데이터베이스 초기화 완료: {added_count}개 추가됨, {error_count}개 실패")
         
         # 벡터 DB 검증
         if added_count == 0:
-            logging.error("벡터 데이터베이스에 데이터가 추가되지 않았습니다.")
+            logger.error("벡터 데이터베이스에 데이터가 추가되지 않았습니다.")
             return False
             
         # 테스트 쿼리 실행
@@ -452,14 +495,14 @@ async def initialize_vector_db():
         )
         
         if not test_result["ids"] or len(test_result["ids"][0]) == 0:
-            logging.error("벡터 데이터베이스 검증 실패: 테스트 쿼리 결과 없음")
+            logger.error("벡터 데이터베이스 검증 실패: 테스트 쿼리 결과 없음")
             return False
             
-        logging.info("벡터 데이터베이스 검증 완료")
+        logger.info("벡터 데이터베이스 검증 완료")
         return True
         
     except Exception as e:
-        logging.error(f"벡터 데이터베이스 초기화 중 오류 발생: {e}")
+        logger.error(f"벡터 데이터베이스 초기화 중 오류 발생: {e}")
         return False
 
 # 파일 변경 감지를 위한 전역 변수
@@ -490,18 +533,18 @@ async def check_file_changes():
                 if last_modified_time is None:
                     last_modified_time = current_mtime
                 elif current_mtime > last_modified_time:
-                    logging.info("qa_pairs.xlsx 파일이 변경되었습니다. 벡터 DB를 업데이트합니다.")
+                    logger.info("qa_pairs.xlsx 파일이 변경되었습니다. 벡터 DB를 업데이트합니다.")
                     last_modified_time = current_mtime
                     await initialize_vector_db()
             await asyncio.sleep(file_check_interval)
         except Exception as e:
-            logging.error(f"파일 변경 확인 중 오류 발생: {e}")
+            logger.error(f"파일 변경 확인 중 오류 발생: {e}")
             await asyncio.sleep(file_check_interval)
 
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행되는 이벤트 핸들러"""
-    logging.info("서버 시작: 벡터 데이터베이스 초기화 시작")
+    logger.info("서버 시작: 벡터 데이터베이스 초기화 시작")
     
     # 초기 벡터 DB 초기화
     await initialize_vector_db()
@@ -514,7 +557,7 @@ async def startup_event():
     # 파일 변경 감지 태스크 시작
     asyncio.create_task(check_file_changes())
     
-    logging.info("파일 감시 시작됨")
+    logger.info("파일 감시 시작됨")
 
 # 마지막으로 정적 파일 서빙 설정
 app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")

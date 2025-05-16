@@ -46,7 +46,7 @@ https://makersuite.google.com/app/apikey
 
 # Cursor ai
 https://www.cursor.com/
-내구글계정
+내구글계정, onepmis-redmine@gmail.com
 
 
 

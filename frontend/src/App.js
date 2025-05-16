@@ -2,6 +2,13 @@ import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import "./App.css";
 
+// API 기본 URL 설정 - 개발/프로덕션 환경에 따라 다른 URL 사용
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? "http://localhost:8000" 
+  : "https://construction-chatbot-api.onrender.com";
+
+console.log(`운영 모드: ${process.env.NODE_ENV}, API URL: ${API_BASE_URL}`);
+
 function App() {
   const [messages, setMessages] = useState(() => {
     // 대화 기록 로드 (localStorage에서 복원)
@@ -12,6 +19,8 @@ function App() {
   });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isDevMode, setIsDevMode] = useState(process.env.NODE_ENV === 'development');
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // 입력 필드 참조
 
@@ -37,6 +46,10 @@ function App() {
     }
   }, [loading]);
 
+  const toggleDebugInfo = () => {
+    setShowDebugInfo(!showDebugInfo);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -55,9 +68,15 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await axios.post("https://construction-chatbot-api.onrender.com/ask", {
+      // 개발/프로덕션 환경에 따라 다른 API URL 사용
+      const response = await axios.post(`${API_BASE_URL}/ask`, {
         query: input,
       });
+
+      // 디버그 정보 로깅
+      if (response.data.is_dev) {
+        console.log("디버그 정보:", response.data.debug_info);
+      }
 
       // 챗봇 답변 추가
       setMessages((prev) => [
@@ -66,6 +85,8 @@ function App() {
           role: "bot",
           content: response.data.answer,
           sources: Array.isArray(response.data.sources) ? response.data.sources : [],
+          debug_info: response.data.debug_info || {},
+          is_dev: response.data.is_dev || false
         },
       ]);
     } catch (error) {
@@ -76,6 +97,8 @@ function App() {
           role: "bot",
           content: "죄송해요, 서버에 문제가 생겼어요. 잠시 후 다시 시도해주세요!",
           sources: [],
+          error: error.toString(),
+          is_dev: isDevMode
         },
       ]);
       console.error("서버 에러:", error);
@@ -94,13 +117,19 @@ function App() {
     console.log("대화 초기화 버튼 클릭");
   };
 
-  // 디버깅: 버튼 텍스트 확인
-  console.log(`전송 버튼 텍스트: ${sendButtonText}`);
-  console.log(`대화 초기화 버튼 텍스트: ${clearButtonText}`);
-
   return (
     <div className="app-container">
       <h1 className="app-title">🏗️ 건설 매뉴얼 챗봇</h1>
+      
+      {isDevMode && (
+        <div className="dev-controls">
+          <button onClick={toggleDebugInfo} className="debug-button">
+            {showDebugInfo ? "디버그 정보 숨기기" : "디버그 정보 보기"}
+          </button>
+          <span className="dev-badge">개발 모드</span>
+        </div>
+      )}
+      
       <div className="chat-container">
         <div className="messages">
           {messages.map((msg, index) => (
@@ -110,7 +139,7 @@ function App() {
             >
               <div className="message-content">
                 {msg.content}
-                {msg.sources.length > 0 && (
+                {msg.sources && msg.sources.length > 0 && (
                   <div className="sources">
                     <strong>출처:</strong>
                     <ul>
@@ -118,6 +147,24 @@ function App() {
                         <li key={i}>{src}</li>
                       ))}
                     </ul>
+                  </div>
+                )}
+                
+                {showDebugInfo && msg.is_dev && msg.debug_info && (
+                  <div className="debug-info">
+                    <details>
+                      <summary>디버그 정보</summary>
+                      <pre>{JSON.stringify(msg.debug_info, null, 2)}</pre>
+                    </details>
+                  </div>
+                )}
+                
+                {showDebugInfo && msg.is_dev && msg.error && (
+                  <div className="debug-info">
+                    <details>
+                      <summary>오류 정보</summary>
+                      <pre>{msg.error}</pre>
+                    </details>
                   </div>
                 )}
               </div>

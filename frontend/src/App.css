@@ -177,3 +177,60 @@
     padding: 10px;
   }
 }
+
+/* 개발 모드 관련 스타일 */
+.dev-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  padding: 5px 10px;
+  background-color: #f1f1f1;
+  border-radius: 5px;
+}
+
+.debug-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.debug-button:hover {
+  background-color: #0056b3;
+}
+
+.dev-badge {
+  background-color: #ff9800;
+  color: white;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.debug-info {
+  margin-top: 10px;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  font-size: 0.8rem;
+}
+
+.debug-info summary {
+  cursor: pointer;
+  font-weight: bold;
+  color: #007bff;
+}
+
+.debug-info pre {
+  margin-top: 5px;
+  white-space: pre-wrap;
+  background-color: #e9ecef;
+  padding: 8px;
+  border-radius: 3px;
+  overflow-x: auto;
+}
