@@ -23,6 +23,13 @@ function App() {
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // 입력 필드 참조
+  const fileInputRef = useRef(null); // 파일 입력 필드 참조
+  
+  // 파일 업로드 관련 상태
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [processingStatus, setProcessingStatus] = useState('');
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
 
   // 버튼 텍스트 고정
   const sendButtonText = "질문하기";
@@ -48,6 +55,80 @@ function App() {
 
   const toggleDebugInfo = () => {
     setShowDebugInfo(!showDebugInfo);
+  };
+
+  const toggleUploadPanel = () => {
+    setShowUploadPanel(!showUploadPanel);
+  };
+
+  const handleFileChange = (event) => {
+    setSelectedFile(event.target.files[0]);
+    setUploadStatus('');
+    setProcessingStatus('');
+  };
+
+  const uploadFile = async () => {
+    if (!selectedFile) {
+      setUploadStatus('파일을 선택해주세요.');
+      return;
+    }
+
+    // 파일 확장자 확인
+    const fileExt = selectedFile.name.split('.').pop().toLowerCase();
+    if (fileExt !== 'xlsx' && fileExt !== 'xls') {
+      setUploadStatus('Excel 파일(.xlsx 또는 .xls)만 업로드 가능합니다.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    
+    setUploadStatus('업로드 중...');
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/upload-excel`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      
+      setUploadStatus(`업로드 완료: ${response.data.message}`);
+      // 파일 선택 초기화
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      setSelectedFile(null);
+    } catch (error) {
+      console.error('파일 업로드 오류:', error);
+      setUploadStatus(`업로드 실패: ${error.response?.data?.detail || error.message}`);
+    }
+  };
+
+  const processExcel = async () => {
+    setProcessingStatus('FAQ 구조화 처리 및 임베딩 중...');
+    
+    try {
+      const response = await axios.post(`${API_BASE_URL}/process-excel`);
+      
+      if (response.data.success) {
+        setProcessingStatus(`FAQ 처리 완료: ${response.data.message}`);
+        
+        // 성공 메시지를 챗봇 메시지로 추가
+        setMessages(prev => [
+          ...prev,
+          {
+            role: "bot",
+            content: `FAQ 데이터가 성공적으로 처리되었습니다. 이제 질문을 입력해보세요.`,
+            sources: []
+          }
+        ]);
+      } else {
+        setProcessingStatus(`FAQ 처리 실패: ${response.data.message}`);
+      }
+    } catch (error) {
+      console.error('FAQ 처리 오류:', error);
+      setProcessingStatus(`FAQ 처리 실패: ${error.response?.data?.message || error.message}`);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -121,12 +202,67 @@ function App() {
     <div className="app-container">
       <h1 className="app-title">🏗️ 건설 매뉴얼 챗봇</h1>
       
-      {isDevMode && (
-        <div className="dev-controls">
-          <button onClick={toggleDebugInfo} className="debug-button">
-            {showDebugInfo ? "디버그 정보 숨기기" : "디버그 정보 보기"}
-          </button>
-          <span className="dev-badge">개발 모드</span>
+      <div className="controls-bar">
+        {isDevMode && (
+          <div className="dev-controls">
+            <button onClick={toggleDebugInfo} className="debug-button">
+              {showDebugInfo ? "디버그 정보 숨기기" : "디버그 정보 보기"}
+            </button>
+            <span className="dev-badge">개발 모드</span>
+          </div>
+        )}
+        
+        <button 
+          onClick={toggleUploadPanel} 
+          className="upload-button"
+          title="Excel 파일을 업로드하여 FAQ 데이터베이스를 업데이트합니다"
+        >
+          {showUploadPanel ? "업로드 패널 숨기기" : "FAQ 업로드"}
+        </button>
+      </div>
+      
+      {showUploadPanel && (
+        <div className="upload-panel">
+          <h3>FAQ 엑셀 파일 업로드</h3>
+          <div className="file-upload-container">
+            <input 
+              type="file" 
+              onChange={handleFileChange} 
+              accept=".xlsx,.xls" 
+              ref={fileInputRef}
+              className="file-input"
+            />
+            <button 
+              onClick={uploadFile} 
+              disabled={!selectedFile}
+              className="upload-action-button"
+            >
+              파일 업로드
+            </button>
+          </div>
+          
+          {uploadStatus && <p className="status-message">{uploadStatus}</p>}
+          
+          <div className="process-container">
+            <button 
+              onClick={processExcel} 
+              className="process-button"
+              disabled={processingStatus.includes('FAQ 처리 중')}
+            >
+              FAQ 구조화 처리 시작
+            </button>
+            {processingStatus && <p className="status-message">{processingStatus}</p>}
+          </div>
+          
+          <div className="upload-instructions">
+            <p><strong>사용 방법:</strong></p>
+            <ol>
+              <li>질문과 답변 컬럼이 포함된 Excel 파일을 선택합니다.</li>
+              <li>"파일 업로드" 버튼을 클릭하여 서버에 업로드합니다.</li>
+              <li>"FAQ 구조화 처리 시작" 버튼을 클릭하여 데이터를 처리합니다.</li>
+              <li>처리가 완료되면 챗봇에 질문을 입력할 수 있습니다.</li>
+            </ol>
+          </div>
         </div>
       )}
       

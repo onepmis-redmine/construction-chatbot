@@ -21,6 +21,7 @@ from utils.logger import get_logger
 import shutil
 from fastapi.responses import JSONResponse
 import sys
+import subprocess
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -69,9 +70,43 @@ def is_development_request(request: Request) -> bool:
     origin = request.headers.get("origin", "")
     return origin.startswith("http://localhost:")
 
+# ChromaDB 클라이언트 설정 - 전역 컬렉션 이름 상수 정의
+COLLECTION_NAME = "construction_manuals"  # 원래 컬렉션 이름으로 되돌림
+
 # ChromaDB 클라이언트 설정
 chroma_client = chromadb.PersistentClient(path=str(VECTOR_DB_PATH))
-collection = chroma_client.get_or_create_collection(name="construction_manuals")
+collection = None  # 시작 시에는 None으로 설정, 초기화 과정에서 생성
+
+def get_collection():
+    """현재 컬렉션을 가져오거나 없으면 생성합니다."""
+    global collection
+    try:
+        if collection is None:
+            try:
+                # 기존 컬렉션 가져오기 시도
+                collection = chroma_client.get_collection(name=COLLECTION_NAME)
+                logger.info(f"기존 컬렉션을 가져왔습니다: {COLLECTION_NAME}")
+            except Exception as e:
+                logger.warning(f"기존 컬렉션을 가져오는데 실패했습니다: {e}")
+                # 컬렉션 생성
+                collection = chroma_client.create_collection(name=COLLECTION_NAME)
+                logger.info(f"새 컬렉션을 생성했습니다: {COLLECTION_NAME}")
+        
+        # 컬렉션 유효성 검사
+        dummy_result = collection.count()
+        logger.info(f"컬렉션 항목 수: {dummy_result}")
+        return collection
+    except Exception as e:
+        logger.error(f"컬렉션 가져오기/생성 중 오류: {e}")
+        # 마지막 시도: 모든 컬렉션 삭제 후 새로 생성
+        try:
+            chroma_client.delete_collection(name=COLLECTION_NAME)
+            collection = chroma_client.create_collection(name=COLLECTION_NAME)
+            logger.info(f"컬렉션을 강제로 재생성했습니다: {COLLECTION_NAME}")
+            return collection
+        except Exception as e2:
+            logger.error(f"컬렉션 강제 재생성 중 오류: {e2}")
+            raise e2
 
 # FAQ 데이터 로드
 faq_data = None
@@ -206,6 +241,7 @@ def call_openrouter(prompt: str) -> str:
 
 def find_faq_match(query: str, threshold: float = 0.6):
     """구조화된 FAQ에서 가장 적절한 답변을 찾습니다."""
+    
     if faq_data is None or faq_data.empty:
         logger.error("FAQ data is not loaded")
         return None
@@ -221,6 +257,11 @@ def find_faq_match(query: str, threshold: float = 0.6):
         
         # 쿼리 임베딩 생성
         query_embedding = get_embeddings(query)
+        
+        # 컬렉션 가져오기
+        current_collection = get_collection()
+            
+        logger.info(f"벡터 검색 시작, 컬렉션 이름: {current_collection.name}")
         
         best_match = None
         highest_similarity = -1
@@ -276,7 +317,19 @@ async def ask_question(q: Question, request: Request):
         query_embedding = get_embeddings(query)
         logger.info("Generated query embedding")
         
-        results = collection.query(
+        # 컬렉션 가져오기
+        current_collection = get_collection()
+        
+        if current_collection.count() == 0:
+            logger.warning("벡터 데이터베이스가 비어 있습니다!")
+            return {
+                "answer": "죄송합니다. 벡터 데이터베이스가 비어 있습니다. 먼저 FAQ 데이터를 업로드하고 처리해주세요.",
+                "sources": [],
+                "is_faq": False,
+                "is_dev": is_dev
+            }
+            
+        results = current_collection.query(
             query_embeddings=[query_embedding],
             n_results=5,
             include=["documents", "metadatas", "distances"]
@@ -301,7 +354,7 @@ async def ask_question(q: Question, request: Request):
         logger.info(f"Best match distance: {best_match_distance}")
         
         # 개발 환경에서는 더 관대한 임계값 적용
-        threshold = 1.8 if is_dev else 1.5
+        threshold = 1.8 if is_dev else 1.5  # 원래 임계값으로 복원
         
         if best_match_distance > threshold:  # 거리가 너무 멀면 관련이 없는 것으로 판단
             logger.warning(f"Best match distance ({best_match_distance}) too high")
@@ -421,107 +474,142 @@ async def reload_faq():
     load_enhanced_faq()
     return {"status": "FAQ reloaded"}
 
-# 벡터 DB 초기화 함수
+# 여기에서 initialize_vector_db 함수 수정
 async def initialize_vector_db():
-    """벡터 데이터베이스를 초기화합니다."""
+    """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다."""
+    global collection
     try:
-        logger.info("벡터 DB 초기화 시작")
-        
-        # FAQ 데이터 로드
-        logger.info(f"FAQ 데이터 파일 경로: {ENHANCED_FAQ_PATH}")
-        if not ENHANCED_FAQ_PATH.exists():
-            logger.error(f"FAQ 데이터 파일이 존재하지 않음: {ENHANCED_FAQ_PATH}")
-            return False
-            
         if not load_enhanced_faq():
-            logger.error("FAQ 데이터 로드 실패")
-            return False
+            logger.error("구조화된 FAQ 데이터를 로드할 수 없습니다.")
+            return {"success": False, "message": "구조화된 FAQ 데이터를 로드할 수 없습니다."}
         
-        logger.info(f"FAQ 데이터 로드 완료: {len(faq_data) if faq_data is not None else 0}개 항목")
+        if faq_data is None or faq_data.empty:
+            logger.error("FAQ 데이터가 비어 있습니다.")
+            return {"success": False, "message": "FAQ 데이터가 비어 있습니다."}
         
-        if faq_data is None or len(faq_data) == 0:
-            logger.error("FAQ 데이터가 비어있습니다.")
-            return False
+        logger.info("Creating vector database from enhanced FAQ data...")
         
         # 기존 컬렉션 삭제 후 재생성
         try:
-            logger.info("기존 컬렉션 삭제 시도")
-            chroma_client.delete_collection(name="construction_manuals")
-            logger.info("기존 컬렉션 삭제 완료")
+            chroma_client.delete_collection(name=COLLECTION_NAME)
+            logger.info(f"기존 컬렉션 삭제 완료: {COLLECTION_NAME}")
         except Exception as e:
-            logger.warning(f"기존 컬렉션 삭제 중 예외 발생 (무시 가능): {e}")
+            logger.warning(f"컬렉션 삭제 중 오류 발생 (무시됨): {e}")
+            
+        # 새 컬렉션 생성
+        collection = chroma_client.create_collection(name=COLLECTION_NAME)
+        logger.info(f"새 컬렉션이 성공적으로 생성됨: {COLLECTION_NAME}")
         
-        logger.info("새 컬렉션 생성 시작")
-        global collection
-        collection = chroma_client.create_collection(name="construction_manuals")
-        logger.info("새 컬렉션 생성 완료")
+        texts = []
+        metadatas = []
+        ids = []
         
-        # FAQ 데이터를 벡터 데이터베이스에 추가
-        added_count = 0
-        error_count = 0
-        
-        logger.info("FAQ 데이터 처리 시작")
+        # 각 FAQ 항목에 대해 임베딩 생성
         for idx, row in faq_data.iterrows():
-            try:
-                logger.info(f"FAQ 항목 {idx + 1} 처리 중...")
-                
-                # JSON 필드 파싱
-                try:
-                    variations = json.loads(row['question_variations'])
-                    structured_answer = json.loads(row['structured_answer'])
-                    keywords = json.loads(row['keywords'])
-                except json.JSONDecodeError as je:
-                    logger.error(f"JSON 파싱 오류 (행 {idx}): {je}")
-                    error_count += 1
-                    continue
-                
-                # 각 질문 변형에 대해 임베딩 생성 및 저장
-                for q in variations:
-                    try:
-                        embedding = get_embeddings(q)
-                        collection.add(
-                            embeddings=[embedding],
-                            documents=[q],
-                            metadatas=[{
-                                "original_question": q,
-                                "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
-                                "keywords": json.dumps(keywords, ensure_ascii=False)
-                            }],
-                            ids=[f"qa_{idx}_{variations.index(q)}"]
-                        )
-                        added_count += 1
-                        logger.info(f"질문 변형 '{q}' 추가됨")
-                    except Exception as e:
-                        logger.error(f"임베딩 생성/저장 오류 (행 {idx}, 질문: {q}): {e}")
-                        error_count += 1
-            except Exception as e:
-                error_count += 1
-                logger.error(f"행 {idx} 처리 중 오류 발생: {e}")
-                continue
-        
-        logger.info(f"벡터 데이터베이스 초기화 완료: {added_count}개 추가됨, {error_count}개 실패")
-        
-        # 벡터 DB 검증
-        if added_count == 0:
-            logger.error("벡터 데이터베이스에 데이터가 추가되지 않았습니다.")
-            return False
+            # JSON 문자열을 파싱
+            question_variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
+            structured_answer = json.loads(row['structured_answer']) if isinstance(row['structured_answer'], str) else row['structured_answer']
+            keywords = json.loads(row['keywords']) if isinstance(row['keywords'], str) else row['keywords']
+            original_question = row['original_question']
             
-        # 테스트 쿼리 실행
-        test_result = collection.query(
-            query_embeddings=[get_embeddings("테스트 쿼리")],
-            n_results=1
-        )
-        
-        if not test_result["ids"] or len(test_result["ids"][0]) == 0:
-            logger.error("벡터 데이터베이스 검증 실패: 테스트 쿼리 결과 없음")
-            return False
+            logger.info(f"Processing FAQ item {idx + 1}: {original_question}")
             
-        logger.info("벡터 데이터베이스 검증 완료")
-        return True
+            # 원본 질문 임베딩
+            texts.append(original_question)
+            metadatas.append({
+                "type": "original_question",
+                "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                "keywords": json.dumps(keywords, ensure_ascii=False)
+            })
+            ids.append(f"orig_{idx}")
+            
+            # 질문 변형들 임베딩
+            for var_idx, q in enumerate(question_variations):
+                texts.append(q)
+                metadatas.append({
+                    "type": "question_variation",
+                    "original_question": original_question,
+                    "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                    "keywords": json.dumps(keywords, ensure_ascii=False)
+                })
+                ids.append(f"q_{idx}_{var_idx}")
+            
+            # 구조화된 답변의 각 부분도 임베딩
+            if 'basic_rules' in structured_answer and structured_answer['basic_rules']:
+                for part_idx, rule in enumerate(structured_answer['basic_rules']):
+                    text = f"기본 규칙: {rule}"
+                    texts.append(text)
+                    metadatas.append({
+                        "type": "answer_part",
+                        "part_type": "basic_rule",
+                        "original_question": original_question,
+                        "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                        "keywords": json.dumps(keywords, ensure_ascii=False)
+                    })
+                    ids.append(f"rule_{idx}_{part_idx}")
+            
+            if 'examples' in structured_answer and structured_answer['examples']:
+                for part_idx, example in enumerate(structured_answer['examples']):
+                    if isinstance(example, dict):
+                        example_text = json.dumps(example, ensure_ascii=False)
+                    else:
+                        example_text = str(example)
+                    
+                    text = f"예시: {example_text}"
+                    texts.append(text)
+                    metadatas.append({
+                        "type": "answer_part",
+                        "part_type": "example",
+                        "original_question": original_question,
+                        "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                        "keywords": json.dumps(keywords, ensure_ascii=False)
+                    })
+                    ids.append(f"example_{idx}_{part_idx}")
+            
+            if 'cautions' in structured_answer and structured_answer['cautions']:
+                for part_idx, caution in enumerate(structured_answer['cautions']):
+                    text = f"주의사항: {caution}"
+                    texts.append(text)
+                    metadatas.append({
+                        "type": "answer_part",
+                        "part_type": "caution",
+                        "original_question": original_question,
+                        "structured_answer": json.dumps(structured_answer, ensure_ascii=False),
+                        "keywords": json.dumps(keywords, ensure_ascii=False)
+                    })
+                    ids.append(f"caution_{idx}_{part_idx}")
         
+        logger.info(f"생성할 임베딩 항목 수: {len(texts)}")
+        
+        # 임베딩 생성 및 저장
+        if texts:
+            embeddings = [get_embeddings(text) for text in texts]
+            
+            # 컬렉션에 추가
+            collection.add(
+                embeddings=embeddings,
+                documents=texts,
+                metadatas=metadatas,
+                ids=ids
+            )
+            
+            logger.info(f"벡터 데이터베이스에 {len(texts)}개 항목 추가 완료")
+            
+            # 간단한 테스트 쿼리 실행
+            test_result = collection.query(
+                query_embeddings=[get_embeddings("테스트 쿼리")],
+                n_results=1
+            )
+            logger.info(f"벡터 DB 테스트 쿼리 결과: {test_result}")
+            
+            return {"success": True, "message": f"{len(texts)}개 항목이 벡터 데이터베이스에 추가되었습니다."}
+        else:
+            logger.error("임베딩할 텍스트가 없습니다.")
+            return {"success": False, "message": "임베딩할 텍스트가 없습니다."}
+            
     except Exception as e:
-        logger.error(f"벡터 데이터베이스 초기화 중 오류 발생: {e}")
-        return False
+        logger.error(f"벡터 데이터베이스 초기화 중 오류 발생: {str(e)}")
+        return {"success": False, "message": f"오류: {str(e)}"}
 
 # 파일 변경 감지를 위한 전역 변수
 last_modified_time = None
@@ -650,88 +738,55 @@ async def upload_excel(file: UploadFile = File(...)):
         logger.error(f"Excel 파일 업로드 실패: {e}")
         raise HTTPException(status_code=500, detail=f"Excel 파일 업로드 실패: {str(e)}")
 
-# Excel 파일 처리 엔드포인트 추가
+# process-excel 엔드포인트 수정
 @app.post("/process-excel")
 async def process_excel():
-    """업로드된 Excel 파일을 처리하여 FAQ 데이터로 변환합니다."""
+    """업로드된 FAQ 엑셀 파일을 처리하고 임베딩을 생성합니다."""
     try:
-        source_path = DOCS_DIR / "qa_pairs.xlsx"
-        if not source_path.exists():
-            return {"status": "error", "detail": "처리할 Excel 파일이 없습니다. 먼저 파일을 업로드해 주세요."}
-        
-        # 외부 프로세스로 qa_allinone.py 실행
-        logger.info("qa_allinone.py를 사용하여 FAQ 데이터 구조화 시작")
-        try:
-            # 환경 변수 설정 (Gemini API 키가 있으면 사용)
-            my_env = os.environ.copy()
-            
-            # 만약 현재 서버에 OPENROUTER_API_KEY가 설정되어 있다면, 이를 GOOGLE_API_KEY로도 사용
-            # (임시 방편, 실제로는 별도의 GOOGLE_API_KEY를 사용하는 것이 좋음)
-            if OPENROUTER_API_KEY:
-                my_env["GOOGLE_API_KEY"] = OPENROUTER_API_KEY
-            
-            # 비동기 방식으로 파이썬 스크립트 실행
-            process = await asyncio.create_subprocess_exec(
-                sys.executable,  # 현재 파이썬 인터프리터
-                str(ROOT_DIR / "qa_allinone.py"),  # qa_allinone.py 경로
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=my_env
+        qa_file_path = DOCS_DIR / "qa_pairs.xlsx"
+        if not qa_file_path.exists():
+            return JSONResponse(
+                status_code=400,
+                content={"success": False, "message": "처리할 엑셀 파일이 없습니다. 먼저 파일을 업로드해주세요."}
             )
-            stdout, stderr = await process.communicate()
-            
-            # 결과 로깅
-            if stdout:
-                logger.info(f"qa_allinone.py 출력: {stdout.decode('utf-8')}")
-            if stderr:
-                logger.error(f"qa_allinone.py 오류: {stderr.decode('utf-8')}")
-                
-            if process.returncode != 0:
-                logger.error(f"qa_allinone.py 실행 실패: 종료 코드 {process.returncode}")
-                return {"status": "error", "detail": f"FAQ 구조화 처리 중 오류가 발생했습니다: 종료 코드 {process.returncode}"}
-                
-            logger.info("qa_allinone.py 실행 완료")
-        except Exception as e:
-            logger.error(f"qa_allinone.py 실행 중 예외 발생: {e}")
-            return {"status": "error", "detail": f"FAQ 구조화 처리 중 오류가 발생했습니다: {str(e)}"}
         
-        # 구조화된 FAQ 파일 확인
-        if not ENHANCED_FAQ_PATH.exists():
-            logger.error(f"구조화된 FAQ 파일을 찾을 수 없습니다: {ENHANCED_FAQ_PATH}")
-            return {"status": "error", "detail": "FAQ 구조화 처리는 완료되었으나 결과 파일을 찾을 수 없습니다."}
+        logger.info("FAQ 구조화 처리 시작...")
         
-        # 구조화된 FAQ 데이터 확인
-        try:
-            enhanced_df = pd.read_excel(ENHANCED_FAQ_PATH)
-            enhanced_count = len(enhanced_df)
-            logger.info(f"구조화된 FAQ 데이터 확인: {enhanced_count}개 항목")
-        except Exception as e:
-            logger.error(f"구조화된 FAQ 데이터 읽기 실패: {e}")
-            enhanced_count = "알 수 없음"
+        # qa_allinone.py 실행
+        script_path = Path(__file__).parent / "qa_allinone.py"
+        process = subprocess.run([sys.executable, str(script_path)], 
+                                 capture_output=True, text=True, encoding='utf-8')
         
-        # FAQ 데이터 다시 로드
-        load_enhanced_faq()
+        if process.returncode != 0:
+            logger.error(f"FAQ 구조화 처리 실패: {process.stderr}")
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": f"FAQ 구조화 처리 실패: {process.stderr}"}
+            )
         
-        # 벡터 DB 초기화 - 반환 전 자동으로 실행
-        db_init_result = await initialize_vector_db()
-        if not db_init_result:
-            logger.warning("벡터 DB 초기화 중 문제가 발생했습니다. FAQ 데이터는 정상적으로 처리되었습니다.")
+        logger.info("FAQ 구조화 처리 완료. 이제 벡터 데이터베이스를 초기화합니다.")
         
-        # 원본 엑셀 파일 행 수 확인
-        try:
-            original_df = pd.read_excel(source_path)
-            original_count = len(original_df)
-        except:
-            original_count = "알 수 없음"
+        # 벡터 데이터베이스 초기화 - 완료될 때까지 기다림
+        db_result = await initialize_vector_db()
         
-        return {
-            "status": "success", 
-            "message": "Excel 파일이 성공적으로 처리되었습니다.",
-            "details": f"원본 {original_count}개 항목 중 {enhanced_count}개가 AI를 통해 구조화되었습니다. 벡터 DB도 초기화되었습니다."
-        }
+        if not db_result["success"]:
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": f"벡터 데이터베이스 초기화 실패: {db_result['message']}"}
+            )
+        
+        return {"success": True, "message": "FAQ 처리 및 벡터 데이터베이스 초기화가 완료되었습니다."}
+        
     except Exception as e:
-        logger.error(f"Excel 처리 중 오류: {e}")
-        return {"status": "error", "detail": str(e)}
+        logger.error(f"FAQ 처리 중 오류 발생: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "message": f"FAQ 처리 중 오류 발생: {str(e)}"}
+        )
 
 # 정적 파일 서빙 설정은 모든 API 엔드포인트 정의 후 맨 마지막에 위치
-app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
+if FRONTEND_BUILD_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
+    logger.info(f"Frontend static files mounted from {FRONTEND_BUILD_DIR}")
+else:
+    logger.warning(f"Frontend build directory not found at {FRONTEND_BUILD_DIR}. Static file serving is disabled.")
