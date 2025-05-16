@@ -53,7 +53,7 @@ FROM python:3.11-alpine as final
 
 WORKDIR /app
 
-# 필요한 런타임 패키지만 설치
+# ud544uc694ud55c ub7f0ud0c0uc784 ud328ud0a4uc9c0ub9cc uc124uce58
 RUN apk add --no-cache \
     libstdc++ \
     libgomp
@@ -63,7 +63,7 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 필요한 디렉토리 생성
-RUN mkdir -p /app/model_cache /app/vector_db /app/logs && \
+RUN mkdir -p /app/model_cache /app/vector_db /app/logs /app/docs && \
     # 권한 설정
     adduser -D appuser && \
     chown -R appuser:appuser /app && \
@@ -72,11 +72,14 @@ RUN mkdir -p /app/model_cache /app/vector_db /app/logs && \
 # 애플리케이션 파일 복사
 COPY main.py .
 COPY .env .
+COPY utils/ ./utils/
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
     TRANSFORMERS_CACHE=/app/model_cache \
     TORCH_HOME=/app/model_cache \
+    # Render 환경 감지를 위한 환경 변수
+    RENDER=true \
     # 추가 최적화를 위한 환경 변수
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1

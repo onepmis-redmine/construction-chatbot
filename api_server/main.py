@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException
 from pydantic import BaseModel
 import chromadb
 import torch
@@ -18,6 +18,9 @@ import asyncio
 import time
 from datetime import datetime
 from utils.logger import get_logger
+import shutil
+from fastapi.responses import JSONResponse
+import sys
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -316,14 +319,29 @@ async def ask_question(q: Question, request: Request):
         # 텍스트 기반 응답 생성
         answer_parts = []
         
+        # 메인 답변 섹션
+        if structured_answer.get('main'):
+            answer_parts.append(f"{structured_answer['main']}\n")
+        
         # 기본 규칙 섹션
-        if structured_answer['basic_rules']:
-            answer_parts.append("[기본 규칙]\n")
-            for rule in structured_answer['basic_rules']:
-                answer_parts.append(f"• {rule}\n")
+        if structured_answer.get('basic_rules'):
+            # 메인 답변과 중복되지 않도록 처리
+            if len(structured_answer['basic_rules']) == 1 and structured_answer['basic_rules'][0] == structured_answer.get('main', ''):
+                # main 필드와 basic_rules의 첫 항목이 동일한 경우 중복 표시하지 않음
+                pass
+            else:
+                answer_parts.append("\n[기본 규칙]\n")
+                for rule in structured_answer['basic_rules']:
+                    # main 필드와 중복되지 않는 경우에만 표시
+                    if rule != structured_answer.get('main', ''):
+                        answer_parts.append(f"• {rule}\n")
+        
+        # 추가 정보 섹션
+        if structured_answer.get('additional'):
+            answer_parts.append(f"\n[추가 정보]\n{structured_answer['additional']}\n")
         
         # 예시 섹션
-        if structured_answer['examples']:
+        if structured_answer.get('examples'):
             answer_parts.append("\n[예시]\n")
             for example in structured_answer['examples']:
                 if isinstance(example, dict):
@@ -355,7 +373,7 @@ async def ask_question(q: Question, request: Request):
                     answer_parts.append(f"• {example}\n")
         
         # 주의사항 섹션
-        if structured_answer['cautions']:
+        if structured_answer.get('cautions'):
             answer_parts.append("\n[주의사항]\n")
             for caution in structured_answer['cautions']:
                 answer_parts.append(f"⚠️ {caution}\n")
@@ -593,9 +611,6 @@ async def startup_event():
     
     logger.info("파일 감시 및 자동 핑 시작됨")
 
-# 마지막으로 정적 파일 서빙 설정
-app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
-
 # 수동 초기화용 엔드포인트 (필요시 재초기화 가능)
 @app.get("/init-db")
 async def manual_initialize_database():
@@ -605,3 +620,118 @@ async def manual_initialize_database():
         return {"status": "success", "message": "데이터베이스가 성공적으로 초기화되었습니다."}
     else:
         return {"status": "error", "message": "데이터베이스 초기화 중 오류가 발생했습니다."}
+
+@app.post("/upload-excel")
+async def upload_excel(file: UploadFile = File(...)):
+    """Excel 파일을 업로드하고 벡터 데이터베이스를 업데이트합니다."""
+    try:
+        # 파일 확장자 확인
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Excel 파일(.xlsx 또는 .xls)만 업로드 가능합니다.")
+        
+        # 파일 저장 경로
+        save_path = DOCS_DIR / "qa_pairs.xlsx"
+        
+        # 파일 저장
+        content = await file.read()
+        with open(save_path, "wb") as f:
+            f.write(content)
+        
+        logger.info(f"Excel 파일이 성공적으로 업로드되었습니다: {save_path}")
+        
+        # 벡터 DB 초기화 (자동 감지 기능이 이미 이 작업을 처리하지만, 명시적으로 호출)
+        await initialize_vector_db()
+        
+        return JSONResponse(
+            content={"message": "Excel 파일이 성공적으로 업로드되었고, 벡터 데이터베이스가 업데이트되었습니다."},
+            status_code=200
+        )
+    except Exception as e:
+        logger.error(f"Excel 파일 업로드 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"Excel 파일 업로드 실패: {str(e)}")
+
+# Excel 파일 처리 엔드포인트 추가
+@app.post("/process-excel")
+async def process_excel():
+    """업로드된 Excel 파일을 처리하여 FAQ 데이터로 변환합니다."""
+    try:
+        source_path = DOCS_DIR / "qa_pairs.xlsx"
+        if not source_path.exists():
+            return {"status": "error", "detail": "처리할 Excel 파일이 없습니다. 먼저 파일을 업로드해 주세요."}
+        
+        # 외부 프로세스로 qa_allinone.py 실행
+        logger.info("qa_allinone.py를 사용하여 FAQ 데이터 구조화 시작")
+        try:
+            # 환경 변수 설정 (Gemini API 키가 있으면 사용)
+            my_env = os.environ.copy()
+            
+            # 만약 현재 서버에 OPENROUTER_API_KEY가 설정되어 있다면, 이를 GOOGLE_API_KEY로도 사용
+            # (임시 방편, 실제로는 별도의 GOOGLE_API_KEY를 사용하는 것이 좋음)
+            if OPENROUTER_API_KEY:
+                my_env["GOOGLE_API_KEY"] = OPENROUTER_API_KEY
+            
+            # 비동기 방식으로 파이썬 스크립트 실행
+            process = await asyncio.create_subprocess_exec(
+                sys.executable,  # 현재 파이썬 인터프리터
+                str(ROOT_DIR / "qa_allinone.py"),  # qa_allinone.py 경로
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                env=my_env
+            )
+            stdout, stderr = await process.communicate()
+            
+            # 결과 로깅
+            if stdout:
+                logger.info(f"qa_allinone.py 출력: {stdout.decode('utf-8')}")
+            if stderr:
+                logger.error(f"qa_allinone.py 오류: {stderr.decode('utf-8')}")
+                
+            if process.returncode != 0:
+                logger.error(f"qa_allinone.py 실행 실패: 종료 코드 {process.returncode}")
+                return {"status": "error", "detail": f"FAQ 구조화 처리 중 오류가 발생했습니다: 종료 코드 {process.returncode}"}
+                
+            logger.info("qa_allinone.py 실행 완료")
+        except Exception as e:
+            logger.error(f"qa_allinone.py 실행 중 예외 발생: {e}")
+            return {"status": "error", "detail": f"FAQ 구조화 처리 중 오류가 발생했습니다: {str(e)}"}
+        
+        # 구조화된 FAQ 파일 확인
+        if not ENHANCED_FAQ_PATH.exists():
+            logger.error(f"구조화된 FAQ 파일을 찾을 수 없습니다: {ENHANCED_FAQ_PATH}")
+            return {"status": "error", "detail": "FAQ 구조화 처리는 완료되었으나 결과 파일을 찾을 수 없습니다."}
+        
+        # 구조화된 FAQ 데이터 확인
+        try:
+            enhanced_df = pd.read_excel(ENHANCED_FAQ_PATH)
+            enhanced_count = len(enhanced_df)
+            logger.info(f"구조화된 FAQ 데이터 확인: {enhanced_count}개 항목")
+        except Exception as e:
+            logger.error(f"구조화된 FAQ 데이터 읽기 실패: {e}")
+            enhanced_count = "알 수 없음"
+        
+        # FAQ 데이터 다시 로드
+        load_enhanced_faq()
+        
+        # 벡터 DB 초기화 - 반환 전 자동으로 실행
+        db_init_result = await initialize_vector_db()
+        if not db_init_result:
+            logger.warning("벡터 DB 초기화 중 문제가 발생했습니다. FAQ 데이터는 정상적으로 처리되었습니다.")
+        
+        # 원본 엑셀 파일 행 수 확인
+        try:
+            original_df = pd.read_excel(source_path)
+            original_count = len(original_df)
+        except:
+            original_count = "알 수 없음"
+        
+        return {
+            "status": "success", 
+            "message": "Excel 파일이 성공적으로 처리되었습니다.",
+            "details": f"원본 {original_count}개 항목 중 {enhanced_count}개가 AI를 통해 구조화되었습니다. 벡터 DB도 초기화되었습니다."
+        }
+    except Exception as e:
+        logger.error(f"Excel 처리 중 오류: {e}")
+        return {"status": "error", "detail": str(e)}
+
+# 정적 파일 서빙 설정은 모든 API 엔드포인트 정의 후 맨 마지막에 위치
+app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")

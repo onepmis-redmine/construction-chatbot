@@ -16,3 +16,4 @@ openpyxl==3.1.2
 huggingface_hub[hf_xet]
 hf_xet
 watchdog
+python-multipart==0.0.6
