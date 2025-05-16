@@ -541,6 +541,37 @@ async def check_file_changes():
             logger.error(f"파일 변경 확인 중 오류 발생: {e}")
             await asyncio.sleep(file_check_interval)
 
+# 마지막으로 정적 파일 서빙 설정하기 전에 추가
+# Ping 엔드포인트 - 서버 활성 상태 유지용
+@app.get("/ping")
+async def ping():
+    """서버가 활성 상태임을 확인하는 단순 엔드포인트"""
+    return {"status": "alive", "timestamp": datetime.now().isoformat()}
+
+# 자동 핑을 위한 백그라운드 태스크
+async def keep_alive():
+    """서버가 슬립 상태로 전환되지 않도록 주기적으로 자체 핑을 수행"""
+    while True:
+        try:
+            # 5분마다 자체 ping (Render 무료 플랜 타임아웃은 일반적으로 15분)
+            await asyncio.sleep(300)
+            async with httpx.AsyncClient() as client:
+                # 현재 서버 URL 동적 생성
+                host = "localhost"
+                port = "8000"
+                # 환경 변수 확인
+                if os.getenv("RENDER") == "true":
+                    # Render 환경에서는 외부 URL 사용
+                    response = await client.get("https://construction-chatbot-api.onrender.com/ping")
+                else:
+                    # 개발 환경에서는 로컬 URL 사용
+                    response = await client.get(f"http://{host}:{port}/ping")
+                
+                logger.info(f"자동 핑 응답: {response.status_code}")
+        except Exception as e:
+            logger.error(f"자동 핑 에러: {e}")
+            continue
+
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행되는 이벤트 핸들러"""
@@ -557,7 +588,10 @@ async def startup_event():
     # 파일 변경 감지 태스크 시작
     asyncio.create_task(check_file_changes())
     
-    logger.info("파일 감시 시작됨")
+    # 서버 활성 상태 유지를 위한 자동 핑 태스크 시작
+    asyncio.create_task(keep_alive())
+    
+    logger.info("파일 감시 및 자동 핑 시작됨")
 
 # 마지막으로 정적 파일 서빙 설정
 app.mount("/", StaticFiles(directory=str(FRONTEND_BUILD_DIR), html=True), name="frontend")
