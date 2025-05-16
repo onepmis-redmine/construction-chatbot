@@ -19,7 +19,7 @@ function App() {
   });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isDevMode, setIsDevMode] = useState(process.env.NODE_ENV === 'development');
+  const isDevMode = process.env.NODE_ENV === 'development';  // 상태 변수에서 상수로 변경
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null); // 입력 필드 참조
