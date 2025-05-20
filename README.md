@@ -52,12 +52,12 @@ docker-compose up -d
 ```bash
 # API 서버 설치
 cd api_server
-pip install -r requirements.txt
+# pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
 # 프론트엔드 설치 (별도 터미널에서)
 cd frontend
-npm install
+# npm install
 npm start
 ```
 

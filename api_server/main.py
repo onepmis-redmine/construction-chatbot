@@ -225,15 +225,41 @@ class Question(BaseModel):
     session_id: str = None
 
 # OpenRouter 호출 함수
-def call_openrouter(prompt: str) -> str:
+def call_openrouter(prompt: str, conversation_history=None) -> str:
     headers = {
         "Authorization": OPENROUTER_API_KEY,
         "Content-Type": "application/json"
     }
+    
+    messages = []
+    
+    # 시스템 메시지 추가 (존댓말 지시)
+    system_message = {
+        "role": "system", 
+        "content": "당신은 건설 정보 시스템에 대한 전문 지식을 갖춘 챗봇입니다. 항상 정중하고 공손한 존댓말로 답변해주세요."
+    }
+    messages.append(system_message)
+    
+    # 대화 기록이 있으면 추가
+    if conversation_history:
+        for msg in conversation_history:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+    
+    # 현재 사용자 메시지 추가
+    messages.append({"role": "user", "content": prompt})
+    
+    # 대화 기록이 없는 경우에도 시스템 메시지는 유지
+    if len(messages) <= 2:  # 시스템 메시지 + 현재 메시지만 있는 경우
+        messages = [system_message, {"role": "user", "content": prompt}]
+    
     payload = {
         "model": "openai/gpt-3.5-turbo",
-        "messages": [{"role": "user", "content": prompt}]
+        "messages": messages
     }
+    
     response = httpx.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers=headers,
@@ -378,7 +404,7 @@ async def ask_question(q: Question, request: Request):
                 response_data["structured_answer"] = structured_answer
                 
                 # 간단한 텍스트 형식으로 저장 (세션 저장용)
-                simple_text = "FAQ 답변 제공됨"
+                simple_text = "FAQ 답변이 제공되었습니다."
                 session_manager.add_message(q.session_id, "assistant", simple_text)
             else:
                 # 답변 없음
@@ -391,7 +417,7 @@ async def ask_question(q: Question, request: Request):
         
         # OpenRouter API 호출
         logger.info(f"No FAQ match found, calling OpenRouter for query: {q.query}")
-        answer = call_openrouter(q.query)
+        answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
         session_manager.add_message(q.session_id, "assistant", answer)
         
         return {

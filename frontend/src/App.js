@@ -64,7 +64,7 @@ function App() {
     const saved = localStorage.getItem("chatHistory");
     return saved
       ? JSON.parse(saved)
-      : [{ role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] }];
+      : [{ role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금하신 점을 말씀해주세요.", sources: [] }];
   });
   const [sessionId, setSessionId] = useState(() => {
     // 세션 ID 로드 (localStorage에서 복원)
@@ -291,7 +291,7 @@ function App() {
   // 대화 초기화
   const clearChat = () => {
     setMessages([
-      { role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] },
+      { role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금하신 점을 말씀해주세요.", sources: [] },
     ]);
     setSessionId(null);
     localStorage.removeItem("sessionId");

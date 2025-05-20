@@ -1,7 +1,7 @@
 {
   "session_id": "5b7a8e95-3e20-4e89-9f40-d16270b29670",
   "created_at": "2025-05-20T17:50:33.377535",
-  "last_activity": "2025-05-20T18:01:19.569442",
+  "last_activity": "2025-05-21T08:10:59.655441",
   "messages": [
     {
       "role": "user",
@@ -52,6 +52,16 @@
       "role": "assistant",
       "content": "FAQ 답변 제공됨",
       "timestamp": "2025-05-20T18:01:19.569442"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 분실",
+      "timestamp": "2025-05-21T08:10:42.389585"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변 제공됨",
+      "timestamp": "2025-05-21T08:10:59.655441"
     }
   ]
 }
