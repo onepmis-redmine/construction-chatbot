@@ -18,6 +18,7 @@ import asyncio
 import time
 from datetime import datetime
 from utils.logger import get_logger
+from utils.session_manager import SessionManager
 import shutil
 from fastapi.responses import JSONResponse
 import sys
@@ -125,6 +126,10 @@ def load_enhanced_faq():
             logger.error("Enhanced FAQ file is empty")
             return False
         
+        # 데이터 컬럼 확인 로깅
+        logger.info(f"FAQ 데이터 컬럼: {list(faq_data.columns)}")
+        logger.info(f"FAQ 데이터 첫 행: \n{faq_data.iloc[0]}")
+        
         # 데이터 형식 검증
         for col in ['question_variations', 'structured_answer', 'keywords']:
             if col not in faq_data.columns:
@@ -211,9 +216,13 @@ def get_embeddings(texts):
     
     return sentence_embeddings[0].tolist() if len(texts) == 1 else sentence_embeddings.tolist()
 
+# 세션 매니저 초기화
+session_manager = SessionManager(storage_dir=str(ROOT_DIR / "sessions"))
+
 # 질문 형식 정의
 class Question(BaseModel):
     query: str
+    session_id: str = None
 
 # OpenRouter 호출 함수
 def call_openrouter(prompt: str) -> str:
@@ -305,164 +314,115 @@ def find_faq_match(query: str, threshold: float = 0.6):
 
 @app.post("/ask")
 async def ask_question(q: Question, request: Request):
-    query = q.query.strip()
-    logger.info(f"Received question: {query}")
-    
-    # 개발 환경 감지
-    is_dev = is_development_request(request)
-    logger.info(f"Request from development environment: {is_dev}")
-    
+    """질문을 처리하고 답변을 반환합니다."""
     try:
-        # 벡터 검색 수행
-        query_embedding = get_embeddings(query)
-        logger.info("Generated query embedding")
+        logger.info(f"Received question: {q.query}, session_id: {q.session_id}")
         
-        # 컬렉션 가져오기
-        current_collection = get_collection()
+        # 개발 환경 여부 확인
+        is_dev = is_development_request(request)
         
-        if current_collection.count() == 0:
-            logger.warning("벡터 데이터베이스가 비어 있습니다!")
-            return {
-                "answer": "죄송합니다. 벡터 데이터베이스가 비어 있습니다. 먼저 FAQ 데이터를 업로드하고 처리해주세요.",
-                "sources": [],
-                "is_faq": False,
-                "is_dev": is_dev
+        # 세션 처리
+        if not q.session_id:
+            session = session_manager.create_session()
+            q.session_id = session.session_id
+            logger.info(f"Created new session: {q.session_id}")
+        else:
+            # 세션이 존재하는지 확인
+            session = session_manager.get_session(q.session_id)
+            if not session:
+                # 존재하지 않는 세션 ID인 경우 새 세션 생성
+                session = session_manager.create_session()
+                q.session_id = session.session_id
+                logger.info(f"Invalid session ID provided, created new: {q.session_id}")
+        
+        # 사용자 메시지 저장
+        session_manager.add_message(q.session_id, "user", q.query)
+        
+        # FAQ 매칭 시도
+        faq_match = find_faq_match(q.query)
+        if faq_match is not None:
+            logger.info(f"FAQ match found for query: {q.query}")
+            
+            # faq_match 객체의 구조 확인
+            logger.info(f"FAQ match columns: {list(faq_match.index)}")
+            
+            # 응답 데이터 생성
+            response_data = {
+                "session_id": q.session_id,
+                "sources": [faq_match.get("source", "FAQ")],
+                "is_dev": is_dev,
+                "type": "faq",
+                "debug_info": {
+                    "source": "faq",
+                    "confidence": faq_match.get("confidence", 1.0)
+                }
             }
             
-        results = current_collection.query(
-            query_embeddings=[query_embedding],
-            n_results=5,
-            include=["documents", "metadatas", "distances"]
-        )
-        
-        logger.info(f"Vector search results: {results}")
-        
-        # 결과가 비어있는 경우 처리
-        if not results["ids"] or len(results["ids"][0]) == 0:
-            logger.warning("No results found in vector database")
-            return {
-                "answer": "죄송합니다. 해당 질문에 대한 답변을 찾을 수 없습니다. 데이터베이스에 데이터가 아직 로드되지 않았을 수 있습니다.",
-                "sources": [],
-                "is_faq": False,
-                "is_dev": is_dev
-            }
+            # 원본 질문 추가
+            if 'original_question' in faq_match:
+                response_data["original_question"] = faq_match["original_question"]
             
-        # 가장 유사한 문서 찾기
-        best_match_idx = 0
-        best_match_distance = results["distances"][0][best_match_idx]
-        
-        logger.info(f"Best match distance: {best_match_distance}")
-        
-        # 개발 환경에서는 더 관대한 임계값 적용
-        threshold = 1.8 if is_dev else 1.5  # 원래 임계값으로 복원
-        
-        if best_match_distance > threshold:  # 거리가 너무 멀면 관련이 없는 것으로 판단
-            logger.warning(f"Best match distance ({best_match_distance}) too high")
-            return {
-                "answer": "죄송합니다. 해당 질문과 충분히 관련된 답변을 찾지 못했습니다.",
-                "sources": [],
-                "is_faq": False,
-                "is_dev": is_dev
-            }
-            
-        # 메타데이터에서 구조화된 답변 추출
-        metadata = results["metadatas"][0][best_match_idx]
-        structured_answer = json.loads(metadata["structured_answer"])
-        
-        # 텍스트 기반 응답 생성
-        answer_parts = []
-        
-        # 메인 답변 섹션
-        if structured_answer.get('main'):
-            answer_parts.append(f"{structured_answer['main']}\n")
-        
-        # 기본 규칙 섹션
-        if structured_answer.get('basic_rules'):
-            # 메인 답변과 중복되지 않도록 처리
-            if len(structured_answer['basic_rules']) == 1 and structured_answer['basic_rules'][0] == structured_answer.get('main', ''):
-                # main 필드와 basic_rules의 첫 항목이 동일한 경우 중복 표시하지 않음
-                pass
+            # 답변 데이터 추가
+            if 'answer' in faq_match:
+                # 단순 텍스트 답변
+                formatted_answer = faq_match["answer"]
+                response_data["answer"] = formatted_answer
+                session_manager.add_message(q.session_id, "assistant", formatted_answer)
+            elif 'structured_answer' in faq_match:
+                # 구조화된 답변 - JSON 객체 그대로 전달
+                structured_answer = faq_match["structured_answer"]
+                if isinstance(structured_answer, str):
+                    structured_answer = json.loads(structured_answer)
+                
+                # 구조화된 데이터 전달
+                response_data["structured_answer"] = structured_answer
+                
+                # 간단한 텍스트 형식으로 저장 (세션 저장용)
+                simple_text = "FAQ 답변 제공됨"
+                session_manager.add_message(q.session_id, "assistant", simple_text)
             else:
-                answer_parts.append("\n[기본 규칙]\n")
-                for rule in structured_answer['basic_rules']:
-                    # main 필드와 중복되지 않는 경우에만 표시
-                    if rule != structured_answer.get('main', ''):
-                        answer_parts.append(f"• {rule}\n")
+                # 답변 없음
+                formatted_answer = "죄송합니다. 이 질문에 대한 답변을 찾을 수 없습니다."
+                response_data["answer"] = formatted_answer
+                session_manager.add_message(q.session_id, "assistant", formatted_answer)
+                logger.error(f"FAQ match found but no answer field: {faq_match}")
+            
+            return response_data
         
-        # 추가 정보 섹션
-        if structured_answer.get('additional'):
-            answer_parts.append(f"\n[추가 정보]\n{structured_answer['additional']}\n")
-        
-        # 예시 섹션
-        if structured_answer.get('examples'):
-            answer_parts.append("\n[예시]\n")
-            for example in structured_answer['examples']:
-                if isinstance(example, dict):
-                    # 딕셔너리 형태의 예시를 읽기 쉽게 포맷팅
-                    scenario = example.get('scenario', '')
-                    
-                    # 결과 필드(result로 시작하는 키) 값들 수집
-                    result_items = []
-                    for k, v in example.items():
-                        if k.startswith('result'):
-                            result_items.append(f"{v}")
-                    
-                    # 결과 문자열 생성
-                    result_str = ", ".join(result_items) if result_items else ""
-                    
-                    # 설명 필드가 있는 경우에만 사용
-                    explanation = example.get('explanation', '')
-                    
-                    # 예시 문자열 생성
-                    formatted_example = f"• {scenario}"
-                    if result_str:
-                        formatted_example += f"\n  → {result_str}"
-                    if explanation and explanation != result_str:  # 설명이 결과와 다른 경우에만 표시
-                        formatted_example += f"\n  ☞ {explanation}"
-                    
-                    answer_parts.append(f"{formatted_example}\n")
-                else:
-                    # 일반 문자열 형태의 예시
-                    answer_parts.append(f"• {example}\n")
-        
-        # 주의사항 섹션
-        if structured_answer.get('cautions'):
-            answer_parts.append("\n[주의사항]\n")
-            for caution in structured_answer['cautions']:
-                answer_parts.append(f"⚠️ {caution}\n")
-        
-        # 모든 섹션을 결합하고 불필요한 공백 제거
-        answer = "".join(answer_parts).strip()
-        
-        # 개발 환경에서는 추가 디버그 정보 제공
-        debug_info = {}
-        if is_dev:
-            debug_info = {
-                "match_distance": best_match_distance,
-                "threshold": threshold,
-                "original_query": query,
-                "matched_document": results["documents"][0][best_match_idx]
-            }
+        # OpenRouter API 호출
+        logger.info(f"No FAQ match found, calling OpenRouter for query: {q.query}")
+        answer = call_openrouter(q.query)
+        session_manager.add_message(q.session_id, "assistant", answer)
         
         return {
             "answer": answer,
-            "sources": ["FAQ 데이터베이스"],
-            "is_faq": True,
-            "original_question": metadata.get("original_question", "Unknown"),
-            "match_distance": best_match_distance,
+            "session_id": q.session_id,
+            "sources": [],
+            "type": "openrouter",
             "is_dev": is_dev,
-            "debug_info": debug_info if is_dev else {}
+            "debug_info": {
+                "source": "openrouter"
+            }
         }
-        
     except Exception as e:
         logger.error(f"Error processing question: {e}")
-        return {
-            "answer": "죄송합니다. 질문 처리 중 오류가 발생했습니다.",
-            "sources": [],
-            "is_faq": False,
-            "error": str(e) if is_dev else "Internal server error",
-            "is_dev": is_dev
-        }
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/session/{session_id}")
+async def get_session(session_id: str):
+    """세션의 대화 기록을 가져옵니다."""
+    messages = session_manager.get_messages(session_id)
+    if not messages:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"messages": messages}
+
+@app.post("/session/cleanup")
+async def cleanup_sessions():
+    """오래된 세션을 정리합니다."""
+    session_manager.cleanup_old_sessions()
+    return {"status": "success", "message": "Sessions cleaned up"}
 
 @app.get("/health")
 async def health_check():
@@ -505,14 +465,21 @@ async def initialize_vector_db():
         ids = []
         
         # 각 FAQ 항목에 대해 임베딩 생성
+        total_items = len(faq_data)
+        logger.info(f"총 처리할 FAQ 항목: {total_items}개")
+        
         for idx, row in faq_data.iterrows():
+            # 진행률 표시
+            progress_percent = (idx + 1) / total_items * 100
+            logger.info(f"FAQ 임베딩 진행률: {progress_percent:.1f}% ({idx + 1}/{total_items})")
+            
             # JSON 문자열을 파싱
             question_variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
             structured_answer = json.loads(row['structured_answer']) if isinstance(row['structured_answer'], str) else row['structured_answer']
             keywords = json.loads(row['keywords']) if isinstance(row['keywords'], str) else row['keywords']
             original_question = row['original_question']
             
-            logger.info(f"Processing FAQ item {idx + 1}: {original_question}")
+            logger.info(f"Processing FAQ item {idx + 1}/{total_items}: {original_question}")
             
             # 원본 질문 임베딩
             texts.append(original_question)
@@ -583,7 +550,17 @@ async def initialize_vector_db():
         
         # 임베딩 생성 및 저장
         if texts:
-            embeddings = [get_embeddings(text) for text in texts]
+            logger.info("임베딩 생성 시작...")
+            
+            # 임베딩 생성 시 진행률 표시
+            embeddings = []
+            total_texts = len(texts)
+            for i, text in enumerate(texts):
+                logger.info(f"임베딩 생성 진행률: {(i + 1) / total_texts * 100:.1f}% ({i + 1}/{total_texts})")
+                embedding = get_embeddings(text)
+                embeddings.append(embedding)
+            
+            logger.info("임베딩 생성 완료! 이제 ChromaDB에 저장합니다...")
             
             # 컬렉션에 추가
             collection.add(

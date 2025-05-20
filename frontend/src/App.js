@@ -9,6 +9,55 @@ const API_BASE_URL = process.env.NODE_ENV === 'development'
 
 console.log(`운영 모드: ${process.env.NODE_ENV}, API URL: ${API_BASE_URL}`);
 
+// 구조화된 답변을 포맷팅하는 함수
+const formatStructuredAnswer = (structuredAnswer) => {
+  if (!structuredAnswer) return "답변 데이터가 없습니다.";
+  
+  let formatted = "답변:\n\n";
+  
+  // 기본 규칙 포맷팅
+  if (structuredAnswer.basic_rules && structuredAnswer.basic_rules.length > 0) {
+    formatted += "• 기본 규칙:\n";
+    structuredAnswer.basic_rules.forEach(rule => {
+      formatted += `  - ${rule}\n`;
+    });
+    formatted += "\n";
+  }
+  
+  // 예시 포맷팅
+  if (structuredAnswer.examples && structuredAnswer.examples.length > 0) {
+    formatted += "• 예시:\n";
+    structuredAnswer.examples.forEach(example => {
+      if (typeof example === 'object') {
+        // 딕셔너리 형태의 예시는 시나리오와 결과로 구분하여 처리
+        Object.entries(example).forEach(([key, value]) => {
+          if (key.toLowerCase().startsWith('scenario')) {
+            formatted += `  📌 ${value}\n`;
+          } else if (key.toLowerCase().startsWith('result')) {
+            formatted += `      ➡️ ${value}\n`;
+          } else {
+            formatted += `      • ${key}: ${value}\n`;
+          }
+        });
+      } else {
+        formatted += `  - ${example}\n`;
+      }
+    });
+    formatted += "\n";
+  }
+  
+  // 주의사항 포맷팅
+  if (structuredAnswer.cautions && structuredAnswer.cautions.length > 0) {
+    formatted += "• 주의사항:\n";
+    structuredAnswer.cautions.forEach(caution => {
+      formatted += `  - ${caution}\n`;
+    });
+    formatted += "\n";
+  }
+  
+  return formatted;
+};
+
 function App() {
   const [messages, setMessages] = useState(() => {
     // 대화 기록 로드 (localStorage에서 복원)
@@ -16,6 +65,10 @@ function App() {
     return saved
       ? JSON.parse(saved)
       : [{ role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] }];
+  });
+  const [sessionId, setSessionId] = useState(() => {
+    // 세션 ID 로드 (localStorage에서 복원)
+    return localStorage.getItem("sessionId") || null;
   });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,10 +88,13 @@ function App() {
   const sendButtonText = "질문하기";
   const clearButtonText = "대화 초기화";
 
-  // 메시지 변경 시 localStorage에 저장
+  // 메시지와 세션 ID 변경 시 localStorage에 저장
   useEffect(() => {
     localStorage.setItem("chatHistory", JSON.stringify(messages));
-  }, [messages]);
+    if (sessionId) {
+      localStorage.setItem("sessionId", sessionId);
+    }
+  }, [messages, sessionId]);
 
   // 메시지 추가 시 자동 스크롤
   useEffect(() => {
@@ -52,6 +108,28 @@ function App() {
       inputRef.current.focus();
     }
   }, [loading]);
+
+  // 세션 ID가 변경될 때 대화 기록 로드
+  useEffect(() => {
+    if (sessionId) {
+      loadSessionMessages(sessionId);
+    }
+  }, [sessionId]);
+
+  const loadSessionMessages = async (sid) => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/session/${sid}`);
+      if (response.data.messages && response.data.messages.length > 0) {
+        setMessages(response.data.messages.map(msg => ({
+          role: msg.role === "assistant" ? "bot" : "user",
+          content: msg.content,
+          sources: []
+        })));
+      }
+    } catch (error) {
+      console.error("세션 메시지 로드 실패:", error);
+    }
+  };
 
   const toggleDebugInfo = () => {
     setShowDebugInfo(!showDebugInfo);
@@ -135,7 +213,6 @@ function App() {
     e.preventDefault();
     if (!input.trim()) return;
 
-    // 디버깅: 전송된 질문 로그
     console.log("전송된 질문:", input);
 
     // 사용자 메시지 추가
@@ -145,33 +222,57 @@ function App() {
       console.log("대화 기록에 추가된 메시지:", newMessages[newMessages.length - 1]);
       return newMessages;
     });
-    setInput(""); // 입력 필드 비우기
+    setInput("");
     setLoading(true);
 
     try {
-      // 개발/프로덕션 환경에 따라 다른 API URL 사용
-      const response = await axios.post(`${API_BASE_URL}/ask`, {
-        query: input,
-      });
+      // session_id가 null이나 undefined인 경우 payload에서 제외
+      const payload = { query: input };
+      if (sessionId) {
+        payload.session_id = sessionId;
+      }
 
-      // 디버그 정보 로깅
+      console.log("서버에 전송하는 payload:", JSON.stringify(payload));
+
+      const response = await axios.post(`${API_BASE_URL}/ask`, payload);
+
+      // 세션 ID가 새로 생성된 경우 저장
+      if (response.data.session_id && response.data.session_id !== sessionId) {
+        setSessionId(response.data.session_id);
+      }
+
       if (response.data.is_dev) {
         console.log("디버그 정보:", response.data.debug_info);
       }
+      
+      // 응답 내용 처리
+      let content;
+      if (response.data.structured_answer) {
+        // 구조화된 답변이 있으면 포맷팅
+        content = formatStructuredAnswer(response.data.structured_answer);
+      } else if (response.data.answer) {
+        // 일반 텍스트 답변
+        content = response.data.answer;
+      } else {
+        // 답변 없음
+        content = "죄송합니다. 답변을 찾을 수 없습니다.";
+      }
 
-      // 챗봇 답변 추가
       setMessages((prev) => [
         ...prev,
         {
           role: "bot",
-          content: response.data.answer,
+          content: content,
           sources: Array.isArray(response.data.sources) ? response.data.sources : [],
           debug_info: response.data.debug_info || {},
-          is_dev: response.data.is_dev || false
+          is_dev: response.data.is_dev || false,
+          type: response.data.type || "unknown"
         },
       ]);
     } catch (error) {
-      // 개선된 에러 메시지
+      console.error("서버 에러:", error);
+      console.error("에러 상세 정보:", error.response?.data || error.message);
+      
       setMessages((prev) => [
         ...prev,
         {
@@ -182,7 +283,6 @@ function App() {
           is_dev: isDevMode
         },
       ]);
-      console.error("서버 에러:", error);
     }
 
     setLoading(false);
@@ -193,8 +293,10 @@ function App() {
     setMessages([
       { role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금한 점을 말씀해주세요.", sources: [] },
     ]);
-    setInput(""); // 초기화 시 입력 필드 비우기
-    setLoading(false); // 명시적으로 로딩 상태 해제
+    setSessionId(null);
+    localStorage.removeItem("sessionId");
+    setInput("");
+    setLoading(false);
     console.log("대화 초기화 버튼 클릭");
   };
 
