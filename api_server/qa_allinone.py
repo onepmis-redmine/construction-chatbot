@@ -149,9 +149,9 @@ class QAProcessor:
                     # JSON 필드를 문자열로 변환
                     enhanced = {
                         'original_question': question,
-                        'question_variations': json.dumps(enhanced['question_variations'], ensure_ascii=False),
-                        'structured_answer': json.dumps(enhanced['structured_answer'], ensure_ascii=False),
-                        'keywords': json.dumps(enhanced['keywords'], ensure_ascii=False)
+                        'question_variations': json.dumps(enhanced['question_variations'], ensure_ascii=False, indent=2),
+                        'structured_answer': json.dumps(enhanced['structured_answer'], ensure_ascii=False, indent=2),
+                        'keywords': json.dumps(enhanced['keywords'], ensure_ascii=False, indent=2)
                     }
                     enhanced_data.append(enhanced)
                     logger.info(f"Successfully processed Q&A pair {idx + 1}: {question}")
