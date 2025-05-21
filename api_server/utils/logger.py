@@ -18,7 +18,7 @@ class Logger:
             
         self._initialized = True
         self.root_dir = Path(__file__).parent.parent.parent
-        self.logs_dir = self.root_dir / "logs"
+        self.logs_dir = Path("/tmp/logs")
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         
         # 로거 초기화
