@@ -28,19 +28,16 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 필요한 디렉토리 생성 및 권한 설정
-RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions && \
+RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions /frontend/build && \
     adduser --disabled-password --gecos "" appuser && \
-    chown -R appuser:appuser /app /model_cache /vector_db /logs /docs /sessions /questions && \
-    chmod -R 755 /app /model_cache /vector_db /logs /docs /sessions /questions
+    chown -R appuser:appuser /app /model_cache /vector_db /logs /docs /sessions /questions /frontend && \
+    chmod -R 755 /app /model_cache /vector_db /logs /docs /sessions /questions /frontend
 
 # 애플리케이션 파일 복사
 COPY api_server/ .
 
 # FAQ 파일 복사
 COPY docs/enhanced_qa_pairs.xlsx /docs/
-
-# 프론트엔드 빌드 파일 복사
-COPY frontend/build /frontend/build
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
