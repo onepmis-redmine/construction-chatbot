@@ -335,7 +335,7 @@ function App() {
         <button 
           onClick={downloadQuestions} 
           className="download-button"
-          title="사용자 질문 데이터를 CSV 파일로 다운로드합니다"
+          title="사용자 질문 데이터를 Excel 파일로 다운로드합니다"
         >
           {downloadButtonText}
         </button>

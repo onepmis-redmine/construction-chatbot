@@ -25,6 +25,10 @@ import sys
 import subprocess
 import csv
 import io
+import tempfile
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+import re
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -198,30 +202,65 @@ def mean_pooling(model_output, attention_mask):
     return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
 # 텍스트를 임베딩으로 변환하는 함수
-def get_embeddings(texts):
-    tokenizer, model = load_model()
-    
+def get_embeddings(texts, batch_size=32):
+    """텍스트를 임베딩으로 변환합니다. 배치 처리를 지원하며 메모리 효율성을 위해 최대 배치 크기를 제한합니다."""
     if isinstance(texts, str):
         texts = [texts]
     
-    encoded_input = tokenizer(
-        texts,
-        padding=True,
-        truncation=True,
-        max_length=512,
-        return_tensors='pt'
-    )
+    # 빈 입력 확인
+    if not texts:
+        logger.warning("get_embeddings: 입력 텍스트가 비어 있습니다.")
+        return []
+        
+    # 로드된 텍스트 길이 로깅
+    logger.info(f"get_embeddings: 처리할 텍스트 {len(texts)}개")
     
-    with torch.no_grad():
-        model_output = model(**encoded_input)
+    # 배치가 너무 크면 분할하여 재귀적으로 처리
+    if len(texts) > batch_size:
+        logger.info(f"배치 크기({len(texts)})가 제한({batch_size})을 초과하여 분할 처리합니다.")
+        result = []
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i:i + batch_size]
+            batch_embeddings = get_embeddings(batch_texts)
+            result.extend(batch_embeddings)
+        return result
     
-    sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
-    sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
-    
-    # 메모리 정리
-    unload_model()
-    
-    return sentence_embeddings[0].tolist() if len(texts) == 1 else sentence_embeddings.tolist()
+    try:
+        # 모델 로드
+        tokenizer, model = load_model()
+        
+        # 인코딩
+        encoded_input = tokenizer(
+            texts,
+            padding=True,
+            truncation=True,
+            max_length=512,
+            return_tensors='pt'
+        )
+        
+        # 임베딩 생성
+        with torch.no_grad():
+            model_output = model(**encoded_input)
+        
+        sentence_embeddings = mean_pooling(model_output, encoded_input['attention_mask'])
+        sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
+        
+        # 텐서를 리스트로 변환
+        embeddings_list = sentence_embeddings.tolist()
+        
+        # 메모리 정리
+        unload_model()
+        
+        # 단일 텍스트인 경우에도 항상 리스트 반환하도록 변경
+        return embeddings_list
+    except Exception as e:
+        logger.error(f"임베딩 생성 중 오류 발생: {e}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
+        
+        # 오류 발생 시 빈 임베딩 반환 (적절한 차원의 0 벡터)
+        # 모델 차원이 384이므로 그에 맞게 설정
+        return [[0.0] * 384 for _ in range(len(texts))]
 
 # 세션 매니저 초기화
 session_manager = SessionManager(storage_dir=str(ROOT_DIR / "sessions"))
@@ -276,7 +315,8 @@ def call_openrouter(prompt: str, conversation_history=None) -> str:
     
     # API 키가 없는 경우 기본 메시지 반환
     if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "your_openrouter_api_key_here":
-        return "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다."
+        logger.error("OpenRouter API 키가 설정되지 않았습니다.")
+        return "죄송합니다. OpenRouter API 키가 설정되지 않아 질문에 대한 답변을 제공할 수 없습니다. 관리자에게 문의해주세요."
     
     messages = []
     
@@ -308,6 +348,8 @@ def call_openrouter(prompt: str, conversation_history=None) -> str:
     }
     
     try:
+        logger.info(f"OpenRouter API 호출: {prompt[:50]}...")
+        
         response = httpx.post(
             url="https://openrouter.ai/api/v1/chat/completions",
             headers=headers,
@@ -316,21 +358,48 @@ def call_openrouter(prompt: str, conversation_history=None) -> str:
             verify=False  # 테스트 환경에서만 사용
         )
         
-        response.raise_for_status()  # HTTP 오류 발생 시 예외 발생
+        # 응답 상태 코드 로깅
+        logger.info(f"OpenRouter API 응답 상태 코드: {response.status_code}")
+        
+        # 응답 내용 디버그를 위해 로깅 (개인정보는 제외)
+        logger.info(f"OpenRouter API 응답 헤더: {dict(response.headers)}")
+        
+        if response.status_code != 200:
+            error_msg = f"OpenRouter API 오류: 상태 코드 {response.status_code}"
+            try:
+                error_data = response.json()
+                error_msg += f", 상세 내용: {error_data}"
+            except:
+                error_msg += f", 응답: {response.text[:200]}"
+            
+            logger.error(error_msg)
+            return f"죄송합니다. API 서버에 문제가 발생했습니다. 관리자에게 문의해주세요. (오류: {response.status_code})"
+        
         data = response.json()
+        
+        # 응답 데이터 구조 확인
+        if "choices" not in data or len(data["choices"]) == 0:
+            logger.error(f"OpenRouter API 응답에 choices 필드가 없습니다: {data}")
+            return "죄송합니다. API 응답이 올바르지 않습니다. 관리자에게 문의해주세요."
+        
+        if "message" not in data["choices"][0]:
+            logger.error(f"OpenRouter API 응답에 message 필드가 없습니다: {data['choices'][0]}")
+            return "죄송합니다. API 응답이 올바르지 않습니다. 관리자에게 문의해주세요."
         
         return data["choices"][0]["message"]["content"]
     except httpx.HTTPStatusError as e:
         logger.error(f"HTTP 오류: {e.response.status_code} - {e.response.text}")
-        return "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다."
+        return f"죄송합니다. API 서버 응답 오류가 발생했습니다. (상태 코드: {e.response.status_code})"
     except httpx.RequestError as e:
         logger.error(f"요청 오류: {e}")
         return "죄송합니다. 서버 연결에 문제가 발생했습니다. 잠시 후 다시 시도해주세요."
     except Exception as e:
         logger.error(f"OpenRouter API 호출 중 오류 발생: {e}")
-        return "죄송합니다. 질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
+        return f"죄송합니다. 질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요. (오류: {str(e)[:100]})"
 
-def find_faq_match(query: str, threshold: float = 0.6):
+def find_faq_match(query: str, threshold: float = 0.75):
     """구조화된 FAQ에서 가장 적절한 답변을 찾습니다."""
     
     if faq_data is None or faq_data.empty:
@@ -338,30 +407,110 @@ def find_faq_match(query: str, threshold: float = 0.6):
         return None, 0.0
     
     try:
-        logger.info(f"Searching for match to query: {query}")
-        logger.info(f"Available FAQ entries: {len(faq_data)}")
-        
         # 쿼리 전처리
         query = query.lower().strip()
         if query.endswith('?') or query.endswith('.'): 
             query = query[:-1]
         
+        start_time = time.time()
+        
         # 쿼리 임베딩 생성
         query_embedding = get_embeddings(query)
         
+        # 단일 임베딩인 경우 리스트로 변환 (배치 처리 함수 변경으로 인한 대응)
+        if isinstance(query_embedding, list) and not isinstance(query_embedding[0], list):
+            query_embedding = [query_embedding]
+            
+        # 만약 임베딩 결과가 빈 리스트이거나 None이면 기본값 사용
+        if not query_embedding or len(query_embedding) == 0:
+            logger.error("임베딩 생성 실패, 기본값 사용")
+            # 384차원 0 벡터 사용
+            query_embedding = [[0.0] * 384]
+        
         # 컬렉션 가져오기
         current_collection = get_collection()
-            
-        logger.info(f"벡터 검색 시작, 컬렉션 이름: {current_collection.name}")
         
+        logger.info(f"벡터 검색 시작: {query}")
+        
+        # 기존 방식으로 돌아가기: 모든 FAQ 항목을 직접 비교
         best_match = None
         highest_similarity = -1
+        
+        # 쿼리에 포함된 단어 목록
+        query_words = set(query.split())
         
         # 각 FAQ 항목과 비교
         for idx, row in faq_data.iterrows():
             try:
                 variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
-                logger.info(f"Row {idx} variations: {variations}")
+                original_question = row.get('original_question', '')
+                
+                # keywords 필드 활용
+                keywords = []
+                if 'keywords' in row:
+                    try:
+                        keywords_data = row['keywords']
+                        if isinstance(keywords_data, str):
+                            keywords = json.loads(keywords_data)
+                        else:
+                            keywords = keywords_data
+                    except Exception as e:
+                        logger.error(f"키워드 파싱 오류: {e}")
+                
+                logger.info(f"FAQ 항목 {idx}: 원본 질문: '{original_question}', 키워드: {keywords}")
+                
+                # 키워드 매칭 점수 계산
+                keyword_bonus = 0.0
+                matching_keywords = []
+                
+                for keyword in keywords:
+                    # 정확한 키워드 매칭 확인 (부분 매칭이 아닌 완전 일치)
+                    # 1. 쿼리에 키워드가 정확히 포함되는지 확인 (단어 경계 고려)
+                    exact_match = False
+                    
+                    # 키워드를 소문자로 변환하고 공백 처리
+                    keyword_lower = keyword.lower().strip()
+                    # 띄어쓰기를 제거한 버전도 생성
+                    keyword_no_space = keyword_lower.replace(" ", "")
+                    
+                    # 쿼리에서 띄어쓰기 제거한 버전
+                    query_no_space = query.lower().replace(" ", "")
+                    # 쿼리 단어를 모두 붙인 버전
+                    query_words_joined = "".join(query_words)
+                    
+                    # 방법 1: 쿼리에서 키워드를 단어 단위로 찾기
+                    if keyword_lower in query_words:
+                        exact_match = True
+                        logger.info(f"단어 단위 매치: '{keyword}'")
+                    
+                    # 방법 2: 쿼리에서 키워드를 단어 경계를 고려하여 찾기
+                    elif re.search(r'\b' + re.escape(keyword_lower) + r'\b', query.lower()):
+                        exact_match = True
+                        logger.info(f"단어 경계 매치: '{keyword}'")
+                    
+                    # 방법 3: 쿼리가 기본적으로 짧은 경우 정확한 키워드만 체크
+                    elif len(query_words) <= 3 and query.lower() == keyword_lower:
+                        exact_match = True
+                        logger.info(f"전체 텍스트 매치: '{keyword}'")
+                    
+                    # 방법 4: 띄어쓰기를 무시하고 매칭
+                    elif keyword_no_space == query_no_space:
+                        exact_match = True
+                        logger.info(f"띄어쓰기 무시 전체 매치: '{keyword}' vs '{query}'")
+                    
+                    # 방법 5: 띄어쓰기를 무시한 부분 문자열 매칭 (키워드가 꽤 길 경우에만)
+                    elif len(keyword_no_space) >= 4 and keyword_no_space in query_no_space:
+                        # 키워드가 충분히 길 경우에만 부분 문자열 매칭 허용
+                        exact_match = True
+                        logger.info(f"띄어쓰기 무시 부분 매치: '{keyword}' in '{query}'")
+                    
+                    if exact_match:
+                        matching_keywords.append(keyword)
+                        keyword_bonus += 0.3  # 키워드당 0.3점 보너스
+                        logger.info(f"정확한 키워드 매치: '{keyword}'")
+                
+                if matching_keywords:
+                    logger.info(f"키워드 매치 발견: {matching_keywords}, 보너스: {keyword_bonus}")
                 
                 for q in variations:
                     # 질문 전처리
@@ -369,29 +518,50 @@ def find_faq_match(query: str, threshold: float = 0.6):
                     if q.endswith('?') or q.endswith('.'): 
                         q = q[:-1]
                         
-                    q_embedding = get_embeddings(q)
-                    similarity = torch.cosine_similarity(
-                        torch.tensor(query_embedding),
-                        torch.tensor(q_embedding),
-                        dim=0
-                    ).item()
-                    
-                    logger.info(f"Comparing '{query}' with '{q}': similarity = {similarity}")
-                    
-                    if similarity > highest_similarity:
-                        highest_similarity = similarity
-                        best_match = row
-                        logger.info(f"New best match found: similarity = {similarity}")
+                    # 직접 코사인 유사도 계산
+                    try:
+                        # q에 대한 임베딩 조회
+                        q_embedding = get_embeddings(q)
+                        
+                        # 단일 임베딩인 경우 리스트로 변환
+                        if isinstance(q_embedding, list) and not isinstance(q_embedding[0], list):
+                            q_embedding = [q_embedding]
+                        
+                        # 코사인 유사도 계산
+                        similarity = torch.cosine_similarity(
+                            torch.tensor(query_embedding[0]),
+                            torch.tensor(q_embedding[0]),
+                            dim=0
+                        ).item()
+                        
+                        # 키워드 보너스 적용
+                        adjusted_similarity = similarity + keyword_bonus
+                        
+                        logger.info(f"질문: '{q}', 기본 유사도: {similarity:.4f}, 키워드 보너스: {keyword_bonus:.2f}, 최종: {adjusted_similarity:.4f}")
+                        
+                        if adjusted_similarity > highest_similarity:
+                            highest_similarity = adjusted_similarity
+                            best_match = row
+                            logger.info(f"새 최고 매치: '{original_question}', 유사도: {adjusted_similarity:.4f}, 매칭 키워드: {matching_keywords}")
+                    except Exception as e:
+                        logger.error(f"유사도 계산 중 오류: {e}")
+                        continue
             except Exception as e:
-                logger.error(f"Error processing row {idx}: {e}")
+                logger.error(f"변형 질문 처리 중 오류: {e}")
                 continue
         
-        logger.info(f"Best match similarity: {highest_similarity} (threshold: {threshold})")
-        if highest_similarity >= threshold:
+        end_time = time.time()
+        logger.info(f"검색 완료: 소요 시간 = {end_time - start_time:.2f}초, 최고 유사도 = {highest_similarity:.4f}")
+        
+        # 최종 유사도가 키워드 보너스 때문에 임계값을 넘었을 수 있으므로, 
+        # 원래 임계값보다 크거나 같은지 확인
+        if highest_similarity >= threshold and best_match is not None:
             return best_match, highest_similarity
-        return None, highest_similarity
+        return None, highest_similarity if highest_similarity > -1 else 0.0
     except Exception as e:
         logger.error(f"Error in find_faq_match: {e}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
         return None, 0.0
 
 @app.post("/ask")
@@ -399,6 +569,7 @@ async def ask_question(q: Question, request: Request):
     """질문을 처리하고 답변을 반환합니다."""
     try:
         logger.info(f"Received question: {q.query}, session_id: {q.session_id}")
+        start_time = time.time()
         
         # 개발 환경 여부 확인
         is_dev = is_development_request(request)
@@ -421,7 +592,12 @@ async def ask_question(q: Question, request: Request):
         session_manager.add_message(q.session_id, "user", q.query)
         
         # FAQ 매칭 시도
+        faq_match_start = time.time()
         faq_match, similarity = find_faq_match(q.query)
+        faq_match_time = time.time() - faq_match_start
+        
+        logger.info(f"FAQ 매칭 소요 시간: {faq_match_time:.2f}초")
+        
         if faq_match is not None:
             logger.info(f"FAQ match found for query: {q.query}")
             
@@ -436,7 +612,8 @@ async def ask_question(q: Question, request: Request):
                 "type": "faq",
                 "debug_info": {
                     "source": "faq",
-                    "confidence": similarity
+                    "confidence": similarity,
+                    "match_time": f"{faq_match_time:.2f}초"
                 }
             }
             
@@ -482,15 +659,24 @@ async def ask_question(q: Question, request: Request):
                 
                 logger.error(f"FAQ match found but no answer field: {faq_match}")
             
+            # 총 처리 시간 측정
+            total_time = time.time() - start_time
+            response_data["debug_info"]["total_time"] = f"{total_time:.2f}초"
+            
             return response_data
         
         # OpenRouter API 호출
+        openrouter_start = time.time()
         logger.info(f"No FAQ match found, calling OpenRouter for query: {q.query}")
         answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
+        openrouter_time = time.time() - openrouter_start
         session_manager.add_message(q.session_id, "assistant", answer)
         
         # 질문과 답변 저장 (OpenRouter의 경우 similarity는 0으로 저장)
         save_question(q.query, answer, 0.0, q.session_id)
+        
+        # 총 처리 시간 측정
+        total_time = time.time() - start_time
         
         return {
             "answer": answer,
@@ -500,7 +686,10 @@ async def ask_question(q: Question, request: Request):
             "is_dev": is_dev,
             "debug_info": {
                 "source": "openrouter",
-                "similarity": 0.0
+                "similarity": 0.0,
+                "faq_match_time": f"{faq_match_time:.2f}초",
+                "openrouter_time": f"{openrouter_time:.2f}초",
+                "total_time": f"{total_time:.2f}초"
             }
         }
     except Exception as e:
@@ -651,13 +840,25 @@ async def initialize_vector_db():
         if texts:
             logger.info("임베딩 생성 시작...")
             
-            # 임베딩 생성 시 진행률 표시
+            # 임베딩 배치 처리 (한 번에 최대 50개씩 처리)
             embeddings = []
+            batch_size = 50
             total_texts = len(texts)
-            for i, text in enumerate(texts):
-                logger.info(f"임베딩 생성 진행률: {(i + 1) / total_texts * 100:.1f}% ({i + 1}/{total_texts})")
-                embedding = get_embeddings(text)
-                embeddings.append(embedding)
+            
+            for i in range(0, total_texts, batch_size):
+                batch_end = min(i + batch_size, total_texts)
+                batch = texts[i:batch_end]
+                
+                logger.info(f"임베딩 생성 진행률: {batch_end / total_texts * 100:.1f}% ({batch_end}/{total_texts})")
+                
+                # 배치 단위로 임베딩 생성
+                batch_embeddings = get_embeddings(batch)
+                
+                # 배치 결과가 단일 임베딩인 경우 리스트로 변환
+                if not isinstance(batch_embeddings[0], list):
+                    batch_embeddings = [batch_embeddings]
+                
+                embeddings.extend(batch_embeddings)
             
             logger.info("임베딩 생성 완료! 이제 ChromaDB에 저장합니다...")
             
@@ -868,115 +1069,68 @@ else:
     logger.warning(f"Frontend build directory not found at {FRONTEND_BUILD_DIR}. Static file serving is disabled.")
 
 @app.get("/download-questions")
-async def download_questions():
-    """저장된 질문을 CSV 파일로 다운로드합니다."""
+async def download_questions_excel():
+    """저장된 질문을 Excel 파일로 다운로드합니다."""
     try:
-        # 기존 파일이 있는지 확인
-        if not QUESTIONS_FILE.exists():
-            # 파일이 없으면 빈 파일 생성
-            with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
-                writer = csv.writer(file)
-                writer.writerow(['timestamp', 'session_id', 'query', 'answer', 'similarity'])
-        else:
-            try:
-                # 기존 파일 읽기
-                with open(QUESTIONS_FILE, mode='r', encoding='utf-8-sig') as file:
-                    content = file.read()
-                
-                # 파일이 비어있거나 BOM만 있는 경우
-                if not content or content == '\ufeff':
-                    with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
-                        writer = csv.writer(file)
-                        writer.writerow(['timestamp', 'session_id', 'query', 'answer', 'similarity'])
-                    logger.info("빈 파일에 헤더를 추가했습니다.")
-                else:
-                    # 파일 다시 열기
-                    with open(QUESTIONS_FILE, mode='r', encoding='utf-8-sig') as file:
-                        reader = csv.reader(file)
-                        rows = list(reader)
-                    
-                    # 헤더 확인
-                    if len(rows) > 0:
-                        header = rows[0]
-                        expected_header = ['timestamp', 'session_id', 'query', 'answer', 'similarity']
-                        
-                        # 헤더가 없거나 예상과 다른 경우
-                        if not header or set(header) != set(expected_header):
-                            logger.info(f"현재 헤더: {header}")
-                            
-                            # 헤더 매핑 생성 (기존 헤더 -> 인덱스)
-                            header_map = {}
-                            if header:
-                                for i, h in enumerate(header):
-                                    header_map[h.lower()] = i
-                            
-                            # 새 행 생성
-                            new_rows = [expected_header]
-                            
-                            # 데이터 행 처리
-                            for i in range(1, len(rows)):
-                                row = rows[i]
-                                new_row = [''] * 5  # 5개 열 초기화
-                                
-                                # 매핑에 따라 데이터 복사
-                                if 'timestamp' in header_map and header_map['timestamp'] < len(row):
-                                    new_row[0] = row[header_map['timestamp']]
-                                elif 0 < len(row):  # 첫 번째 열이 timestamp라고 가정
-                                    new_row[0] = row[0]
-                                    
-                                if 'session_id' in header_map and header_map['session_id'] < len(row):
-                                    new_row[1] = row[header_map['session_id']]
-                                elif 1 < len(row):  # 두 번째 열이 session_id라고 가정
-                                    new_row[1] = row[1]
-                                    
-                                if 'query' in header_map and header_map['query'] < len(row):
-                                    new_row[2] = row[header_map['query']]
-                                elif 2 < len(row):  # 세 번째 열이 query라고 가정
-                                    new_row[2] = row[2]
-                                    
-                                if 'answer' in header_map and header_map['answer'] < len(row):
-                                    new_row[3] = row[header_map['answer']]
-                                elif 3 < len(row):  # 네 번째 열이 answer라고 가정
-                                    new_row[3] = row[3]
-                                    
-                                if 'similarity' in header_map and header_map['similarity'] < len(row):
-                                    new_row[4] = row[header_map['similarity']]
-                                elif 4 < len(row):  # 다섯 번째 열이 similarity라고 가정
-                                    new_row[4] = row[4]
-                                
-                                # 타임스탬프 형식 변환
-                                if new_row[0]:
-                                    try:
-                                        # ISO 형식 문자열을 datetime 객체로 변환 시도
-                                        dt = datetime.fromisoformat(new_row[0].replace('Z', '+00:00'))
-                                        # 원하는 형식으로 변환
-                                        new_row[0] = dt.strftime("%Y-%m-%d %p %I:%M").replace("AM", "오전").replace("PM", "오후")
-                                    except ValueError:
-                                        # 변환 실패 시 원본 값 유지
-                                        pass
-                                
-                                new_rows.append(new_row)
-                            
-                            # 파일 업데이트
-                            with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
-                                writer = csv.writer(file)
-                                for row in new_rows:
-                                    writer.writerow(row)
-                            
-                            logger.info("CSV 파일 헤더를 업데이트했습니다.")
-            except Exception as e:
-                logger.error(f"파일 처리 중 오류: {e}")
-                import traceback
-                logger.error(f"상세 오류: {traceback.format_exc()}")
+        # 임시 파일 생성
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as temp_file:
+            temp_path = temp_file.name
         
-        # 파일 다운로드
+        # 기존 CSV 파일이 있는지 확인
+        if not QUESTIONS_FILE.exists():
+            # 파일이 없으면 빈 데이터프레임 생성
+            df = pd.DataFrame(columns=['timestamp', 'session_id', 'query', 'answer', 'similarity'])
+        else:
+            # CSV 파일 읽기
+            try:
+                df = pd.read_csv(QUESTIONS_FILE, encoding='utf-8-sig')
+            except Exception as e:
+                logger.error(f"CSV 파일 읽기 오류: {e}")
+                df = pd.DataFrame(columns=['timestamp', 'session_id', 'query', 'answer', 'similarity'])
+        
+        # 워크북 생성
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "질문 데이터"
+        
+        # 헤더 추가
+        headers = ['시간', '세션 ID', '질문', '답변', '유사도']
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.value = header
+            # 헤더 스타일 설정
+            cell.font = cell.font.copy(bold=True)
+        
+        # 데이터 추가
+        for row_idx, row in df.iterrows():
+            for col_idx, value in enumerate(row, 1):
+                ws.cell(row=row_idx+2, column=col_idx, value=value)
+        
+        # 열 너비 자동 조정
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                if cell.value:
+                    cell_length = len(str(cell.value))
+                    if cell_length > max_length:
+                        max_length = cell_length
+            
+            # 최대 너비 제한 (너무 넓지 않게)
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column].width = adjusted_width
+        
+        # 파일 저장
+        wb.save(temp_path)
+        
+        # 파일 다운로드 응답
         return FileResponse(
-            path=QUESTIONS_FILE,
-            filename="saved_questions.csv",
-            media_type="text/csv"
+            path=temp_path,
+            filename="saved_questions.xlsx",
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     except Exception as e:
-        logger.error(f"질문 다운로드 중 오류 발생: {e}")
+        logger.error(f"Excel 파일 생성 중 오류 발생: {e}")
         import traceback
         logger.error(f"상세 오류: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))

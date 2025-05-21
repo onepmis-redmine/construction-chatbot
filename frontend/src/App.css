@@ -291,6 +291,29 @@
   margin-right: 8px;
 }
 
+.download-excel-button {
+  background-color: #217346;  /* Excel 녹색 */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+  display: flex;
+  align-items: center;
+  margin-left: 10px;
+}
+
+.download-excel-button:hover {
+  background-color: #1a5c38;
+}
+
+.download-excel-button:before {
+  content: '📊';
+  margin-right: 8px;
+}
+
 /* 추가: 업로드 패널 스타일 */
 .upload-panel {
   width: 100%;

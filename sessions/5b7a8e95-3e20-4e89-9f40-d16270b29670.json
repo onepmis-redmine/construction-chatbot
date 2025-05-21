@@ -1,7 +1,7 @@
 {
   "session_id": "5b7a8e95-3e20-4e89-9f40-d16270b29670",
   "created_at": "2025-05-20T17:50:33.377535",
-  "last_activity": "2025-05-21T09:03:35.697929",
+  "last_activity": "2025-05-21T10:20:35.528925",
   "messages": [
     {
       "role": "user",
@@ -202,6 +202,276 @@
       "role": "assistant",
       "content": "FAQ 답변이 제공되었습니다.",
       "timestamp": "2025-05-21T09:03:35.697929"
+    },
+    {
+      "role": "user",
+      "content": "휴일수당",
+      "timestamp": "2025-05-21T09:14:10.334334"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:14:22.448487"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:14:30.992554"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:14:43.985153"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호",
+      "timestamp": "2025-05-21T09:14:50.392033"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:15:04.375215"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호",
+      "timestamp": "2025-05-21T09:20:17.317371"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:20:29.972048"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:36:49.640981"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:37:02.578387"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호",
+      "timestamp": "2025-05-21T09:41:11.258769"
+    },
+    {
+      "role": "assistant",
+      "content": "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다.",
+      "timestamp": "2025-05-21T09:41:12.869472"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:41:24.435736"
+    },
+    {
+      "role": "assistant",
+      "content": "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다.",
+      "timestamp": "2025-05-21T09:41:25.733666"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:47:05.595854"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:47:17.600190"
+    },
+    {
+      "role": "user",
+      "content": "휴일수당",
+      "timestamp": "2025-05-21T09:48:33.553269"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:48:45.358688"
+    },
+    {
+      "role": "user",
+      "content": "연장수당",
+      "timestamp": "2025-05-21T09:48:59.314450"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:49:11.734348"
+    },
+    {
+      "role": "user",
+      "content": "연장수당",
+      "timestamp": "2025-05-21T09:59:18.938819"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:59:30.638373"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:59:36.285557"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:59:48.143813"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T10:01:12.697247"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:01:25.148268"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T10:06:43.727428"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:06:56.221201"
+    },
+    {
+      "role": "user",
+      "content": "휴일수당",
+      "timestamp": "2025-05-21T10:07:04.265189"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:07:16.887204"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T10:07:22.351065"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:07:36.185800"
+    },
+    {
+      "role": "user",
+      "content": "노무비 명세서",
+      "timestamp": "2025-05-21T10:07:43.651260"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:07:56.391040"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T10:11:00.461619"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:11:14.784129"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T10:11:25.783227"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:11:38.096520"
+    },
+    {
+      "role": "user",
+      "content": "연장수당",
+      "timestamp": "2025-05-21T10:11:49.800558"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:12:02.882588"
+    },
+    {
+      "role": "user",
+      "content": "휴일수당",
+      "timestamp": "2025-05-21T10:12:06.352243"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:12:18.831071"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 분실",
+      "timestamp": "2025-05-21T10:12:23.201445"
+    },
+    {
+      "role": "assistant",
+      "content": "죄송합니다. API 서버에 문제가 발생했습니다. 관리자에게 문의해주세요. (오류: 401)",
+      "timestamp": "2025-05-21T10:12:36.692828"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 분실",
+      "timestamp": "2025-05-21T10:12:49.956927"
+    },
+    {
+      "role": "assistant",
+      "content": "죄송합니다. API 서버에 문제가 발생했습니다. 관리자에게 문의해주세요. (오류: 401)",
+      "timestamp": "2025-05-21T10:13:03.428252"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 분실",
+      "timestamp": "2025-05-21T10:18:30.351826"
+    },
+    {
+      "role": "assistant",
+      "content": "죄송합니다. 비밀번호를 분실하신 경우, 로그인 화면에서 '비밀번호 찾기' 또는 '비밀번호 재설정' 링크를 클릭하여 비밀번호를 재설정할 수 있습니다. 이메일 주소나 휴대전화 번호를 통해 인증 프로세스를 완료하고 새로운 비밀번호를 설정해주시면 됩니다. 만약에도 도움이 필요하시다면 해당 서비스의 고객센터에 문의하여 도움을 받으시기 바랍니다.",
+      "timestamp": "2025-05-21T10:18:45.046752"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 ",
+      "timestamp": "2025-05-21T10:19:03.531920"
+    },
+    {
+      "role": "assistant",
+      "content": "비밀번호 분실 시에는 해당 서비스의 '비밀번호 찾기' 기능을 이용하여 비밀번호를 재설정할 수 있습니다. 일반적으로 등록한 이메일 주소나 휴대전화 번호를 입력하고, 본인 확인 절차를 거쳐 새로운 비밀번호를 설정할 수 있습니다. 계정 보안을 위해 타인에게 비밀번호를 알려주지 마시고, 안전한 비밀번호로 변경해주시기 바랍니다. 문제가 계속되면 해당 서비스의 고객센터에 문의하여 도움을 받으시기 바랍니다.",
+      "timestamp": "2025-05-21T10:19:18.834491"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T10:19:53.849932"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:20:06.156084"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 찾기",
+      "timestamp": "2025-05-21T10:20:23.192124"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T10:20:35.528925"
     }
   ]
 }
