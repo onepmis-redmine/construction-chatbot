@@ -36,6 +36,12 @@ RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions && \
 # 애플리케이션 파일 복사
 COPY api_server/ .
 
+# FAQ 파일 복사
+COPY docs/enhanced_qa_pairs.xlsx /docs/
+
+# 프론트엔드 빌드 파일 복사
+COPY frontend/build /frontend/build
+
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
     TRANSFORMERS_CACHE=/model_cache \
@@ -44,7 +50,9 @@ ENV PYTHONUNBUFFERED=1 \
     RENDER=true \
     # 추가 최적화를 위한 환경 변수
     PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    # OpenRouter API 키
+    OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
 
 # 비특권 사용자로 실행
 USER appuser
