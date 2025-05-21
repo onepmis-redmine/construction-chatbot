@@ -1,7 +1,7 @@
 # 빌드 스테이지
 FROM python:3.11-slim as builder
 
-WORKDIR /app
+WORKDIR /build
 
 # 필요한 빌드 도구 설치
 RUN apt-get update && apt-get install -y \
@@ -21,26 +21,25 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 최종 스테이지
 FROM python:3.11-slim as final
 
-WORKDIR /app
+WORKDIR /
 
 # 가상환경 복사
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# 필요한 디렉토리 생성
-RUN mkdir -p /app/model_cache /app/vector_db /app/logs /app/docs /app/sessions /app/questions && \
-    # 권한 설정
+# 필요한 디렉토리 생성 및 권한 설정
+RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions && \
     adduser --disabled-password --gecos "" appuser && \
-    chown -R appuser:appuser /app && \
-    chmod -R 755 /app
+    chown -R appuser:appuser /model_cache /vector_db /logs /docs /sessions /questions && \
+    chmod -R 755 /model_cache /vector_db /logs /docs /sessions /questions
 
 # 애플리케이션 파일 복사
-COPY . .
+COPY . /app
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
-    TRANSFORMERS_CACHE=/app/model_cache \
-    TORCH_HOME=/app/model_cache \
+    TRANSFORMERS_CACHE=/model_cache \
+    TORCH_HOME=/model_cache \
     # Render 환경 감지를 위한 환경 변수
     RENDER=true \
     # 추가 최적화를 위한 환경 변수
@@ -52,4 +51,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
