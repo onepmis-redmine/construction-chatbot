@@ -87,6 +87,7 @@ function App() {
   // 버튼 텍스트 고정
   const sendButtonText = "질문하기";
   const clearButtonText = "대화 초기화";
+  const downloadButtonText = "질문 다운로드";
 
   // 메시지와 세션 ID 변경 시 localStorage에 저장
   useEffect(() => {
@@ -209,6 +210,15 @@ function App() {
     }
   };
 
+  // 질문 다운로드 함수
+  const downloadQuestions = () => {
+    // 다운로드 URL 생성
+    const downloadUrl = `${API_BASE_URL}/download-questions`;
+    
+    // 새 탭에서 다운로드 링크 열기
+    window.open(downloadUrl, '_blank');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -320,6 +330,14 @@ function App() {
           title="Excel 파일을 업로드하여 FAQ 데이터베이스를 업데이트합니다"
         >
           {showUploadPanel ? "업로드 패널 숨기기" : "FAQ 업로드"}
+        </button>
+        
+        <button 
+          onClick={downloadQuestions} 
+          className="download-button"
+          title="사용자 질문 데이터를 CSV 파일로 다운로드합니다"
+        >
+          {downloadButtonText}
         </button>
       </div>
       

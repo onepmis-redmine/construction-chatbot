@@ -20,9 +20,11 @@ from datetime import datetime
 from utils.logger import get_logger
 from utils.session_manager import SessionManager
 import shutil
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import sys
 import subprocess
+import csv
+import io
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -34,11 +36,16 @@ DOCS_DIR = ROOT_DIR / "docs"
 ENHANCED_FAQ_PATH = DOCS_DIR / "enhanced_qa_pairs.xlsx"
 FRONTEND_BUILD_DIR = ROOT_DIR / "frontend" / "build"
 LOGS_DIR = ROOT_DIR / "logs"  # 로그 디렉토리 추가
+QUESTIONS_DIR = ROOT_DIR / "questions"  # 질문 저장 디렉토리 추가
 
 # 디렉토리 존재 확인 및 생성
 VECTOR_DB_PATH.mkdir(parents=True, exist_ok=True)
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 LOGS_DIR.mkdir(parents=True, exist_ok=True)  # 로그 디렉토리 생성
+QUESTIONS_DIR.mkdir(parents=True, exist_ok=True)  # 질문 저장 디렉토리 생성
+
+# 질문 저장 파일 경로
+QUESTIONS_FILE = QUESTIONS_DIR / "saved_questions.csv"
 
 load_dotenv()  # .env 파일 읽기
 
@@ -219,6 +226,42 @@ def get_embeddings(texts):
 # 세션 매니저 초기화
 session_manager = SessionManager(storage_dir=str(ROOT_DIR / "sessions"))
 
+# 질문 저장 함수
+def save_question(query: str, answer: str = None, similarity: float = None, session_id: str = None):
+    """사용자 질문과 답변을 CSV 파일에 저장합니다."""
+    try:
+        # 파일이 존재하지 않으면 헤더와 함께 생성
+        file_exists = QUESTIONS_FILE.exists()
+        
+        # 현재 시간을 원하는 형식으로 포맷팅 (YYYY-MM-DD AM/PM H:MM)
+        now = datetime.now()
+        formatted_time = now.strftime("%Y-%m-%d %p %I:%M").replace("AM", "오전").replace("PM", "오후")
+        
+        # BOM을 사용하여 UTF-8로 저장 (Excel에서 한글 인코딩 문제 해결)
+        with open(QUESTIONS_FILE, mode='a', newline='', encoding='utf-8-sig') as file:
+            writer = csv.writer(file)
+            
+            # 파일이 새로 생성된 경우 헤더 추가
+            if not file_exists:
+                writer.writerow(['timestamp', 'session_id', 'query', 'answer', 'similarity'])
+            
+            # 질문과 답변 저장
+            writer.writerow([
+                formatted_time,
+                session_id or 'unknown',
+                query,
+                answer or '',
+                f"{similarity:.4f}" if similarity is not None else ''
+            ])
+        
+        logger.info(f"질문과 답변 저장 완료: {query}")
+        return True
+    except Exception as e:
+        logger.error(f"질문 저장 중 오류 발생: {e}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
+        return False
+
 # 질문 형식 정의
 class Question(BaseModel):
     query: str
@@ -230,6 +273,10 @@ def call_openrouter(prompt: str, conversation_history=None) -> str:
         "Authorization": OPENROUTER_API_KEY,
         "Content-Type": "application/json"
     }
+    
+    # API 키가 없는 경우 기본 메시지 반환
+    if not OPENROUTER_API_KEY or OPENROUTER_API_KEY == "your_openrouter_api_key_here":
+        return "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다."
     
     messages = []
     
@@ -260,26 +307,35 @@ def call_openrouter(prompt: str, conversation_history=None) -> str:
         "messages": messages
     }
     
-    response = httpx.post(
-        url="https://openrouter.ai/api/v1/chat/completions",
-        headers=headers,
-        json=payload,
-        timeout=60.0,
-        verify=False  # 테스트 환경에서만 사용
-    )
-
-    data = response.json()
     try:
+        response = httpx.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=60.0,
+            verify=False  # 테스트 환경에서만 사용
+        )
+        
+        response.raise_for_status()  # HTTP 오류 발생 시 예외 발생
+        data = response.json()
+        
         return data["choices"][0]["message"]["content"]
-    except Exception:
-        return f"❌ OpenRouter 응답 오류:\n{json.dumps(data, indent=2, ensure_ascii=False)}"
+    except httpx.HTTPStatusError as e:
+        logger.error(f"HTTP 오류: {e.response.status_code} - {e.response.text}")
+        return "죄송합니다. 질문에 대한 답변을 찾을 수 없습니다. FAQ에 없는 질문은 현재 처리할 수 없습니다."
+    except httpx.RequestError as e:
+        logger.error(f"요청 오류: {e}")
+        return "죄송합니다. 서버 연결에 문제가 발생했습니다. 잠시 후 다시 시도해주세요."
+    except Exception as e:
+        logger.error(f"OpenRouter API 호출 중 오류 발생: {e}")
+        return "죄송합니다. 질문 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요."
 
 def find_faq_match(query: str, threshold: float = 0.6):
     """구조화된 FAQ에서 가장 적절한 답변을 찾습니다."""
     
     if faq_data is None or faq_data.empty:
         logger.error("FAQ data is not loaded")
-        return None
+        return None, 0.0
     
     try:
         logger.info(f"Searching for match to query: {query}")
@@ -332,11 +388,11 @@ def find_faq_match(query: str, threshold: float = 0.6):
         
         logger.info(f"Best match similarity: {highest_similarity} (threshold: {threshold})")
         if highest_similarity >= threshold:
-            return best_match
-        return None
+            return best_match, highest_similarity
+        return None, highest_similarity
     except Exception as e:
         logger.error(f"Error in find_faq_match: {e}")
-        return None
+        return None, 0.0
 
 @app.post("/ask")
 async def ask_question(q: Question, request: Request):
@@ -365,7 +421,7 @@ async def ask_question(q: Question, request: Request):
         session_manager.add_message(q.session_id, "user", q.query)
         
         # FAQ 매칭 시도
-        faq_match = find_faq_match(q.query)
+        faq_match, similarity = find_faq_match(q.query)
         if faq_match is not None:
             logger.info(f"FAQ match found for query: {q.query}")
             
@@ -380,7 +436,7 @@ async def ask_question(q: Question, request: Request):
                 "type": "faq",
                 "debug_info": {
                     "source": "faq",
-                    "confidence": faq_match.get("confidence", 1.0)
+                    "confidence": similarity
                 }
             }
             
@@ -394,6 +450,10 @@ async def ask_question(q: Question, request: Request):
                 formatted_answer = faq_match["answer"]
                 response_data["answer"] = formatted_answer
                 session_manager.add_message(q.session_id, "assistant", formatted_answer)
+                
+                # 질문과 답변 저장
+                save_question(q.query, formatted_answer, similarity, q.session_id)
+                
             elif 'structured_answer' in faq_match:
                 # 구조화된 답변 - JSON 객체 그대로 전달
                 structured_answer = faq_match["structured_answer"]
@@ -406,11 +466,20 @@ async def ask_question(q: Question, request: Request):
                 # 간단한 텍스트 형식으로 저장 (세션 저장용)
                 simple_text = "FAQ 답변이 제공되었습니다."
                 session_manager.add_message(q.session_id, "assistant", simple_text)
+                
+                # 구조화된 답변을 문자열로 변환하여 저장
+                answer_text = json.dumps(structured_answer, ensure_ascii=False)
+                save_question(q.query, answer_text, similarity, q.session_id)
+                
             else:
                 # 답변 없음
                 formatted_answer = "죄송합니다. 이 질문에 대한 답변을 찾을 수 없습니다."
                 response_data["answer"] = formatted_answer
                 session_manager.add_message(q.session_id, "assistant", formatted_answer)
+                
+                # 질문과 답변 저장
+                save_question(q.query, formatted_answer, similarity, q.session_id)
+                
                 logger.error(f"FAQ match found but no answer field: {faq_match}")
             
             return response_data
@@ -420,6 +489,9 @@ async def ask_question(q: Question, request: Request):
         answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
         session_manager.add_message(q.session_id, "assistant", answer)
         
+        # 질문과 답변 저장 (OpenRouter의 경우 similarity는 0으로 저장)
+        save_question(q.query, answer, 0.0, q.session_id)
+        
         return {
             "answer": answer,
             "session_id": q.session_id,
@@ -427,7 +499,8 @@ async def ask_question(q: Question, request: Request):
             "type": "openrouter",
             "is_dev": is_dev,
             "debug_info": {
-                "source": "openrouter"
+                "source": "openrouter",
+                "similarity": 0.0
             }
         }
     except Exception as e:
@@ -793,3 +866,117 @@ if FRONTEND_BUILD_DIR.exists():
     logger.info(f"Frontend static files mounted from {FRONTEND_BUILD_DIR}")
 else:
     logger.warning(f"Frontend build directory not found at {FRONTEND_BUILD_DIR}. Static file serving is disabled.")
+
+@app.get("/download-questions")
+async def download_questions():
+    """저장된 질문을 CSV 파일로 다운로드합니다."""
+    try:
+        # 기존 파일이 있는지 확인
+        if not QUESTIONS_FILE.exists():
+            # 파일이 없으면 빈 파일 생성
+            with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
+                writer = csv.writer(file)
+                writer.writerow(['timestamp', 'session_id', 'query', 'answer', 'similarity'])
+        else:
+            try:
+                # 기존 파일 읽기
+                with open(QUESTIONS_FILE, mode='r', encoding='utf-8-sig') as file:
+                    content = file.read()
+                
+                # 파일이 비어있거나 BOM만 있는 경우
+                if not content or content == '\ufeff':
+                    with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(['timestamp', 'session_id', 'query', 'answer', 'similarity'])
+                    logger.info("빈 파일에 헤더를 추가했습니다.")
+                else:
+                    # 파일 다시 열기
+                    with open(QUESTIONS_FILE, mode='r', encoding='utf-8-sig') as file:
+                        reader = csv.reader(file)
+                        rows = list(reader)
+                    
+                    # 헤더 확인
+                    if len(rows) > 0:
+                        header = rows[0]
+                        expected_header = ['timestamp', 'session_id', 'query', 'answer', 'similarity']
+                        
+                        # 헤더가 없거나 예상과 다른 경우
+                        if not header or set(header) != set(expected_header):
+                            logger.info(f"현재 헤더: {header}")
+                            
+                            # 헤더 매핑 생성 (기존 헤더 -> 인덱스)
+                            header_map = {}
+                            if header:
+                                for i, h in enumerate(header):
+                                    header_map[h.lower()] = i
+                            
+                            # 새 행 생성
+                            new_rows = [expected_header]
+                            
+                            # 데이터 행 처리
+                            for i in range(1, len(rows)):
+                                row = rows[i]
+                                new_row = [''] * 5  # 5개 열 초기화
+                                
+                                # 매핑에 따라 데이터 복사
+                                if 'timestamp' in header_map and header_map['timestamp'] < len(row):
+                                    new_row[0] = row[header_map['timestamp']]
+                                elif 0 < len(row):  # 첫 번째 열이 timestamp라고 가정
+                                    new_row[0] = row[0]
+                                    
+                                if 'session_id' in header_map and header_map['session_id'] < len(row):
+                                    new_row[1] = row[header_map['session_id']]
+                                elif 1 < len(row):  # 두 번째 열이 session_id라고 가정
+                                    new_row[1] = row[1]
+                                    
+                                if 'query' in header_map and header_map['query'] < len(row):
+                                    new_row[2] = row[header_map['query']]
+                                elif 2 < len(row):  # 세 번째 열이 query라고 가정
+                                    new_row[2] = row[2]
+                                    
+                                if 'answer' in header_map and header_map['answer'] < len(row):
+                                    new_row[3] = row[header_map['answer']]
+                                elif 3 < len(row):  # 네 번째 열이 answer라고 가정
+                                    new_row[3] = row[3]
+                                    
+                                if 'similarity' in header_map and header_map['similarity'] < len(row):
+                                    new_row[4] = row[header_map['similarity']]
+                                elif 4 < len(row):  # 다섯 번째 열이 similarity라고 가정
+                                    new_row[4] = row[4]
+                                
+                                # 타임스탬프 형식 변환
+                                if new_row[0]:
+                                    try:
+                                        # ISO 형식 문자열을 datetime 객체로 변환 시도
+                                        dt = datetime.fromisoformat(new_row[0].replace('Z', '+00:00'))
+                                        # 원하는 형식으로 변환
+                                        new_row[0] = dt.strftime("%Y-%m-%d %p %I:%M").replace("AM", "오전").replace("PM", "오후")
+                                    except ValueError:
+                                        # 변환 실패 시 원본 값 유지
+                                        pass
+                                
+                                new_rows.append(new_row)
+                            
+                            # 파일 업데이트
+                            with open(QUESTIONS_FILE, mode='w', newline='', encoding='utf-8-sig') as file:
+                                writer = csv.writer(file)
+                                for row in new_rows:
+                                    writer.writerow(row)
+                            
+                            logger.info("CSV 파일 헤더를 업데이트했습니다.")
+            except Exception as e:
+                logger.error(f"파일 처리 중 오류: {e}")
+                import traceback
+                logger.error(f"상세 오류: {traceback.format_exc()}")
+        
+        # 파일 다운로드
+        return FileResponse(
+            path=QUESTIONS_FILE,
+            filename="saved_questions.csv",
+            media_type="text/csv"
+        )
+    except Exception as e:
+        logger.error(f"질문 다운로드 중 오류 발생: {e}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,7 +1,7 @@
 {
   "session_id": "5b7a8e95-3e20-4e89-9f40-d16270b29670",
   "created_at": "2025-05-20T17:50:33.377535",
-  "last_activity": "2025-05-21T08:10:59.655441",
+  "last_activity": "2025-05-21T09:03:35.697929",
   "messages": [
     {
       "role": "user",
@@ -62,6 +62,146 @@
       "role": "assistant",
       "content": "FAQ 답변 제공됨",
       "timestamp": "2025-05-21T08:10:59.655441"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호",
+      "timestamp": "2025-05-21T08:20:05.668358"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:20:18.909143"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T08:24:59.536912"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:25:12.543919"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 분실",
+      "timestamp": "2025-05-21T08:25:44.209982"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:25:56.982317"
+    },
+    {
+      "role": "user",
+      "content": "가나다라",
+      "timestamp": "2025-05-21T08:26:00.194796"
+    },
+    {
+      "role": "assistant",
+      "content": "❌ OpenRouter 응답 오류:\n{\n  \"error\": {\n    \"message\": \"No auth credentials found\",\n    \"code\": 401\n  }\n}",
+      "timestamp": "2025-05-21T08:26:15.166752"
+    },
+    {
+      "role": "user",
+      "content": "가나다라",
+      "timestamp": "2025-05-21T08:29:15.395685"
+    },
+    {
+      "role": "assistant",
+      "content": "❌ OpenRouter 응답 오류:\n{\n  \"error\": {\n    \"message\": \"No auth credentials found\",\n    \"code\": 401\n  }\n}",
+      "timestamp": "2025-05-21T08:29:31.206360"
+    },
+    {
+      "role": "user",
+      "content": "비밀번호 ",
+      "timestamp": "2025-05-21T08:29:38.399383"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:29:51.211301"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T08:30:16.539907"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:30:29.169129"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T08:38:03.784201"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:38:16.577128"
+    },
+    {
+      "role": "user",
+      "content": "노무비명세서",
+      "timestamp": "2025-05-21T08:43:47.859535"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:44:01.442039"
+    },
+    {
+      "role": "user",
+      "content": "가나다라",
+      "timestamp": "2025-05-21T08:44:29.751569"
+    },
+    {
+      "role": "assistant",
+      "content": "❌ OpenRouter 응답 오류:\n{\n  \"error\": {\n    \"message\": \"No auth credentials found\",\n    \"code\": 401\n  }\n}",
+      "timestamp": "2025-05-21T08:44:44.098135"
+    },
+    {
+      "role": "user",
+      "content": "주휴수다",
+      "timestamp": "2025-05-21T08:45:17.213242"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:45:30.342661"
+    },
+    {
+      "role": "user",
+      "content": "연장수당",
+      "timestamp": "2025-05-21T08:45:35.015544"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:45:47.728104"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T08:45:53.463600"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T08:46:06.711890"
+    },
+    {
+      "role": "user",
+      "content": "주휴수당",
+      "timestamp": "2025-05-21T09:03:22.571315"
+    },
+    {
+      "role": "assistant",
+      "content": "FAQ 답변이 제공되었습니다.",
+      "timestamp": "2025-05-21T09:03:35.697929"
     }
   ]
 }
