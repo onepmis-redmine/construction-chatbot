@@ -90,6 +90,15 @@ git commit -m "커밋 메시지"
 git push origin main
 ```
 
+### docker 빌드
+docker-compose build
+### docker 빌드된 이미지 크기 체크
+docker images
+### docker 빌드 삭제
+docker system prune -a
+
+
+
 🧪 UI 개선 (Material UI, Tailwind 등)
 💬 챗봇 형식 변경 (대화 방식)
 🔁 GPT 응답 캐싱 등
