@@ -16,7 +16,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 의존성 파일 복사 및 설치
-COPY requirements.txt .
+COPY ./requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     # 불필요한 파일 제거
     find /opt/venv -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true && \
@@ -53,7 +53,7 @@ FROM python:3.11-alpine as final
 
 WORKDIR /app
 
-# ud544uc694ud55c ub7f0ud0c0uc784 ud328ud0a4uc9c0ub9cc uc124uce58
+# 필요한 런타임 패키지만 설치
 RUN apk add --no-cache \
     libstdc++ \
     libgomp
@@ -63,16 +63,14 @@ COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 필요한 디렉토리 생성
-RUN mkdir -p /app/model_cache /app/vector_db /app/logs /app/docs && \
+RUN mkdir -p /app/model_cache /app/vector_db /app/logs /app/docs /app/sessions /app/questions && \
     # 권한 설정
     adduser -D appuser && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app
 
 # 애플리케이션 파일 복사
-COPY main.py .
-COPY .env .
-COPY utils/ ./utils/
+COPY ./ .
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \

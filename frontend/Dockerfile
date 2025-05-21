@@ -18,7 +18,7 @@ FROM nginx:alpine
 COPY --from=builder /app/build /usr/share/nginx/html
 
 # Nginx 설정 (필요 시)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/nginx.conf /etc/nginx/conf.d/default.conf
 
 # 포트 노출
 EXPOSE 80
