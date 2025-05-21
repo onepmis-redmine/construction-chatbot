@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, UploadFile, File, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, HTTPException, Query
 from pydantic import BaseModel
 import chromadb
 import torch
@@ -611,143 +611,173 @@ async def ask_question(q: Question, request: Request):
         session_manager.add_message(q.session_id, "user", q.query)
         
         # FAQ 매칭 시도
-        faq_match_start = time.time()
-        faq_match, similarity = find_faq_match(q.query)
-        faq_match_time = time.time() - faq_match_start
-        
-        logger.info(f"FAQ 매칭 소요 시간: {faq_match_time:.2f}초")
-        
-        if faq_match is not None:
-            logger.info(f"FAQ match found for query: {q.query}")
+        try:
+            faq_match_start = time.time()
+            faq_match, similarity = find_faq_match(q.query)
+            faq_match_time = time.time() - faq_match_start
             
-            # faq_match 객체의 구조 확인
-            logger.info(f"FAQ match columns: {list(faq_match.index)}")
+            logger.info(f"FAQ 매칭 소요 시간: {faq_match_time:.2f}초")
             
-            # 응답 데이터 생성
-            response_data = {
-                "session_id": q.session_id,
-                "sources": [faq_match.get("source", "FAQ")],
-                "is_dev": is_dev,
-                "type": "faq",
-                "debug_info": {
-                    "source": "faq",
-                    "confidence": similarity,
-                    "match_time": f"{faq_match_time:.2f}초"
+            if faq_match is not None:
+                logger.info(f"FAQ match found for query: {q.query}")
+                
+                # faq_match 객체의 구조 확인
+                logger.info(f"FAQ match columns: {list(faq_match.index)}")
+                
+                # 응답 데이터 생성
+                response_data = {
+                    "session_id": q.session_id,
+                    "sources": [faq_match.get("source", "FAQ")],
+                    "is_dev": is_dev,
+                    "type": "faq",
+                    "debug_info": {
+                        "source": "faq",
+                        "confidence": similarity,
+                        "match_time": f"{faq_match_time:.2f}초"
+                    }
                 }
-            }
-            
-            # 원본 질문 추가
-            if 'original_question' in faq_match:
-                response_data["original_question"] = faq_match["original_question"]
-            
-            # 답변 데이터 추가
-            if 'answer' in faq_match:
-                # 단순 텍스트 답변
-                formatted_answer = faq_match["answer"]
-                response_data["answer"] = formatted_answer
-                session_manager.add_message(q.session_id, "assistant", formatted_answer)
-                
-                # 질문과 답변 저장
-                save_question(q.query, formatted_answer, similarity, q.session_id)
-                
-            elif 'structured_answer' in faq_match:
-                # 구조화된 답변 - JSON 객체 그대로 전달
-                structured_answer = faq_match["structured_answer"]
-                if isinstance(structured_answer, str):
-                    structured_answer = json.loads(structured_answer)
-                
-                # 구조화된 데이터 전달
-                response_data["structured_answer"] = structured_answer
-                
-                # 구조화된 답변을 읽기 쉬운 텍스트로 변환하여 세션에 저장
-                readable_text = ""
                 
                 # 원본 질문 추가
-                if "original_question" in faq_match:
-                    readable_text += f"질문: {faq_match['original_question']}\n\n"
+                if 'original_question' in faq_match:
+                    response_data["original_question"] = faq_match["original_question"]
                 
-                # 기본 규칙 추가
-                if "basic_rules" in structured_answer and structured_answer["basic_rules"]:
-                    readable_text += "• 기본 규칙:\n"
-                    for rule in structured_answer["basic_rules"]:
-                        readable_text += f"  - {rule}\n"
-                    readable_text += "\n"
+                # 답변 데이터 추가
+                if 'answer' in faq_match:
+                    # 단순 텍스트 답변
+                    formatted_answer = faq_match["answer"]
+                    response_data["answer"] = formatted_answer
+                    session_manager.add_message(q.session_id, "assistant", formatted_answer)
+                    
+                    # 질문과 답변 저장
+                    save_question(q.query, formatted_answer, similarity, q.session_id)
+                    
+                elif 'structured_answer' in faq_match:
+                    # 구조화된 답변 - JSON 객체 그대로 전달
+                    structured_answer = faq_match["structured_answer"]
+                    if isinstance(structured_answer, str):
+                        structured_answer = json.loads(structured_answer)
+                    
+                    # 구조화된 데이터 전달
+                    response_data["structured_answer"] = structured_answer
+                    
+                    # 구조화된 답변을 읽기 쉬운 텍스트로 변환하여 세션에 저장
+                    readable_text = ""
+                    
+                    # 원본 질문 추가
+                    if "original_question" in faq_match:
+                        readable_text += f"질문: {faq_match['original_question']}\n\n"
+                    
+                    # 기본 규칙 추가
+                    if "basic_rules" in structured_answer and structured_answer["basic_rules"]:
+                        readable_text += "• 기본 규칙:\n"
+                        for rule in structured_answer["basic_rules"]:
+                            readable_text += f"  - {rule}\n"
+                        readable_text += "\n"
+                    
+                    # 예시 추가
+                    if "examples" in structured_answer and structured_answer["examples"]:
+                        readable_text += "• 예시:\n"
+                        for example in structured_answer["examples"]:
+                            if isinstance(example, dict):
+                                # 딕셔너리 형태의 예시는 시나리오와 결과로 구분하여 처리
+                                for key, value in example.items():
+                                    if key.lower().startswith('scenario'):
+                                        readable_text += f"  📌 {value}\n"
+                                    elif key.lower().startswith('result'):
+                                        readable_text += f"      ➡️ {value}\n"
+                                    else:
+                                        readable_text += f"      • {key}: {value}\n"
+                            else:
+                                readable_text += f"  - {example}\n"
+                        readable_text += "\n"
+                    
+                    # 주의사항 추가
+                    if "cautions" in structured_answer and structured_answer["cautions"]:
+                        readable_text += "• 주의사항:\n"
+                        for caution in structured_answer["cautions"]:
+                            readable_text += f"  - {caution}\n"
+                        readable_text += "\n"
+                    
+                    # 세션에 저장
+                    session_manager.add_message(q.session_id, "assistant", readable_text)
+                    
+                    # 구조화된 답변을 문자열로 변환하여 저장
+                    answer_text = json.dumps(structured_answer, ensure_ascii=False)
+                    save_question(q.query, answer_text, similarity, q.session_id)
+                    
+                else:
+                    # 답변 없음
+                    formatted_answer = "죄송합니다. 이 질문에 대한 답변을 찾을 수 없습니다."
+                    response_data["answer"] = formatted_answer
+                    session_manager.add_message(q.session_id, "assistant", formatted_answer)
+                    
+                    # 질문과 답변 저장
+                    save_question(q.query, formatted_answer, similarity, q.session_id)
+                    
+                    logger.error(f"FAQ match found but no answer field: {faq_match}")
                 
-                # 예시 추가
-                if "examples" in structured_answer and structured_answer["examples"]:
-                    readable_text += "• 예시:\n"
-                    for example in structured_answer["examples"]:
-                        if isinstance(example, dict):
-                            # 딕셔너리 형태의 예시는 시나리오와 결과로 구분하여 처리
-                            for key, value in example.items():
-                                if key.lower().startswith('scenario'):
-                                    readable_text += f"  📌 {value}\n"
-                                elif key.lower().startswith('result'):
-                                    readable_text += f"      ➡️ {value}\n"
-                                else:
-                                    readable_text += f"      • {key}: {value}\n"
-                        else:
-                            readable_text += f"  - {example}\n"
-                    readable_text += "\n"
+                # 총 처리 시간 측정
+                total_time = time.time() - start_time
+                response_data["debug_info"]["total_time"] = f"{total_time:.2f}초"
                 
-                # 주의사항 추가
-                if "cautions" in structured_answer and structured_answer["cautions"]:
-                    readable_text += "• 주의사항:\n"
-                    for caution in structured_answer["cautions"]:
-                        readable_text += f"  - {caution}\n"
-                    readable_text += "\n"
-                
-                # 세션에 저장
-                session_manager.add_message(q.session_id, "assistant", readable_text)
-                
-                # 구조화된 답변을 문자열로 변환하여 저장
-                answer_text = json.dumps(structured_answer, ensure_ascii=False)
-                save_question(q.query, answer_text, similarity, q.session_id)
-                
-            else:
-                # 답변 없음
-                formatted_answer = "죄송합니다. 이 질문에 대한 답변을 찾을 수 없습니다."
-                response_data["answer"] = formatted_answer
-                session_manager.add_message(q.session_id, "assistant", formatted_answer)
-                
-                # 질문과 답변 저장
-                save_question(q.query, formatted_answer, similarity, q.session_id)
-                
-                logger.error(f"FAQ match found but no answer field: {faq_match}")
+                return response_data
+            
+            # OpenRouter API 호출
+            openrouter_start = time.time()
+            logger.info(f"No FAQ match found, calling OpenRouter for query: {q.query}")
+            answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
+            openrouter_time = time.time() - openrouter_start
+            session_manager.add_message(q.session_id, "assistant", answer)
+            
+            # 질문과 답변 저장 (OpenRouter의 경우 similarity는 0으로 저장)
+            save_question(q.query, answer, 0.0, q.session_id)
             
             # 총 처리 시간 측정
             total_time = time.time() - start_time
-            response_data["debug_info"]["total_time"] = f"{total_time:.2f}초"
             
-            return response_data
-        
-        # OpenRouter API 호출
-        openrouter_start = time.time()
-        logger.info(f"No FAQ match found, calling OpenRouter for query: {q.query}")
-        answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
-        openrouter_time = time.time() - openrouter_start
-        session_manager.add_message(q.session_id, "assistant", answer)
-        
-        # 질문과 답변 저장 (OpenRouter의 경우 similarity는 0으로 저장)
-        save_question(q.query, answer, 0.0, q.session_id)
-        
-        # 총 처리 시간 측정
-        total_time = time.time() - start_time
-        
-        return {
-            "answer": answer,
-            "session_id": q.session_id,
-            "sources": [],
-            "type": "openrouter",
-            "is_dev": is_dev,
-            "debug_info": {
-                "source": "openrouter",
-                "similarity": 0.0,
-                "faq_match_time": f"{faq_match_time:.2f}초",
-                "openrouter_time": f"{openrouter_time:.2f}초",
-                "total_time": f"{total_time:.2f}초"
+            return {
+                "answer": answer,
+                "session_id": q.session_id,
+                "sources": [],
+                "type": "openrouter",
+                "is_dev": is_dev,
+                "debug_info": {
+                    "source": "openrouter",
+                    "similarity": 0.0,
+                    "faq_match_time": f"{faq_match_time:.2f}초",
+                    "openrouter_time": f"{openrouter_time:.2f}초",
+                    "total_time": f"{total_time:.2f}초"
+                }
             }
-        }
+        except Exception as e:
+            logger.error(f"FAQ 매칭 중 오류: {e}")
+            # OpenRouter로 폴백
+            openrouter_start = time.time()
+            logger.info(f"FAQ 매칭 실패, OpenRouter 호출: {q.query}")
+            answer = call_openrouter(q.query, session_manager.get_messages(q.session_id))
+            openrouter_time = time.time() - openrouter_start
+            session_manager.add_message(q.session_id, "assistant", answer)
+            
+            # 질문과 답변 저장 (OpenRouter의 경우 similarity는 0으로 저장)
+            save_question(q.query, answer, 0.0, q.session_id)
+            
+            # 총 처리 시간 측정
+            total_time = time.time() - start_time
+            
+            return {
+                "answer": answer,
+                "session_id": q.session_id,
+                "sources": [],
+                "type": "openrouter",
+                "is_dev": is_dev,
+                "debug_info": {
+                    "source": "openrouter",
+                    "error": str(e),
+                    "faq_match_time": f"{faq_match_time:.2f}초",
+                    "openrouter_time": f"{openrouter_time:.2f}초",
+                    "total_time": f"{total_time:.2f}초"
+                }
+            }
     except Exception as e:
         logger.error(f"Error processing question: {e}")
         import traceback
@@ -780,11 +810,7 @@ async def reload_faq():
 
 # 여기에서 initialize_vector_db 함수 수정
 async def initialize_vector_db(force_rebuild=False):
-    """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다.
-    
-    Args:
-        force_rebuild (bool): True이면 기존 컬렉션 무시하고 새로 생성, False이면 기존 컬렉션 존재 시 재사용
-    """
+    """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다."""
     global collection
     try:
         # 기존 컬렉션이 있는지 확인
@@ -919,16 +945,18 @@ async def initialize_vector_db(force_rebuild=False):
         if texts:
             logger.info("임베딩 생성 시작...")
             
-            # 임베딩 배치 처리 (한 번에 최대 50개씩 처리)
-            embeddings = []
-            batch_size = 50
-            total_texts = len(texts)
+            # 배치 크기 줄이기
+            batch_size = 10  # 50에서 10으로 감소
             
-            for i in range(0, total_texts, batch_size):
-                batch_end = min(i + batch_size, total_texts)
+            # embeddings 리스트 초기화
+            embeddings = []
+            
+            # 메모리 사용량 최적화
+            for i in range(0, len(texts), batch_size):
+                batch_end = min(i + batch_size, len(texts))
                 batch = texts[i:batch_end]
                 
-                logger.info(f"임베딩 생성 진행률: {batch_end / total_texts * 100:.1f}% ({batch_end}/{total_texts})")
+                logger.info(f"임베딩 생성 진행률: {batch_end / len(texts) * 100:.1f}% ({batch_end}/{len(texts)})")
                 
                 # 배치 단위로 임베딩 생성
                 batch_embeddings = get_embeddings(batch)
@@ -946,6 +974,14 @@ async def initialize_vector_db(force_rebuild=False):
                         logger.info("단일 임베딩을 리스트로 변환했습니다.")
 
                     embeddings.extend(batch_embeddings)
+                
+                # 메모리 정리
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                
+                # 잠시 대기하여 메모리 해제 시간 확보
+                await asyncio.sleep(0.1)
             
             logger.info("임베딩 생성 완료! 이제 ChromaDB에 저장합니다...")
             
@@ -1068,6 +1104,9 @@ async def keep_alive():
             logger.error(f"자동 핑 에러: {e}")
             continue
 
+# 전역 변수로 태스크 저장
+background_tasks = set()
+
 @app.on_event("startup")
 async def startup_event():
     """서버 시작 시 실행되는 이벤트 핸들러"""
@@ -1083,12 +1122,31 @@ async def startup_event():
         last_modified_time = os.path.getmtime(ENHANCED_FAQ_PATH)
     
     # 파일 변경 감지 태스크 시작
-    asyncio.create_task(check_file_changes())
+    file_check_task = asyncio.create_task(check_file_changes())
+    background_tasks.add(file_check_task)
+    file_check_task.add_done_callback(background_tasks.discard)
     
     # 서버 활성 상태 유지를 위한 자동 핑 태스크 시작
-    asyncio.create_task(keep_alive())
+    keep_alive_task = asyncio.create_task(keep_alive())
+    background_tasks.add(keep_alive_task)
+    keep_alive_task.add_done_callback(background_tasks.discard)
     
     logger.info("파일 감시 및 자동 핑 시작됨")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """서버 종료 시 실행되는 이벤트 핸들러"""
+    logger.info("서버 종료: 백그라운드 태스크 정리 시작")
+    
+    # 모든 백그라운드 태스크 취소
+    for task in background_tasks:
+        task.cancel()
+    
+    # 태스크가 완료될 때까지 대기
+    if background_tasks:
+        await asyncio.gather(*background_tasks, return_exceptions=True)
+    
+    logger.info("서버 종료: 모든 백그라운드 태스크 정리 완료")
 
 # 수동 초기화용 엔드포인트 (필요시 재초기화 가능)
 @app.get("/init-db")
@@ -1141,43 +1199,143 @@ async def process_excel():
         
         logger.info("FAQ 구조화 처리 시작...")
         
-        # 1단계: qa_allinone.py 실행하여 구조화된 FAQ 생성
-        script_path = Path(__file__).parent / "qa_allinone.py"
-        process = subprocess.run([sys.executable, str(script_path)], 
-                                 capture_output=True, text=True, encoding='utf-8')
+        # 비동기 작업으로 변경
+        async def process_faq():
+            try:
+                script_path = Path(__file__).parent / "qa_allinone.py"
+                
+                if not script_path.exists():
+                    raise FileNotFoundError(f"qa_allinone.py 파일을 찾을 수 없습니다: {script_path}")
+                
+                logger.info(f"qa_allinone.py 실행 시작: {script_path}")
+                
+                # 환경에 따른 subprocess 처리 방식 선택
+                is_windows = os.name == 'nt'
+                is_render = os.getenv("RENDER") == "true"
+                
+                if is_windows and not is_render:
+                    # Windows 개발 환경
+                    logger.info("Windows 개발 환경에서 실행")
+                    process = subprocess.Popen(
+                        [sys.executable, str(script_path)],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        encoding='utf-8',
+                        cwd=str(Path(__file__).parent),
+                        env={**os.environ, 'PYTHONPATH': str(Path(__file__).parent)}
+                    )
+                    
+                    # 실시간 로그 처리
+                    error_output = []
+                    
+                    # stdout과 stderr를 비동기로 읽기
+                    async def read_stream(stream, is_error=False):
+                        while True:
+                            line = stream.readline()
+                            if not line and process.poll() is not None:
+                                break
+                            if line:
+                                line = line.strip()
+                                if is_error:
+                                    error_output.append(line)
+                                    logger.error(f"[qa_allinone.py] {line}")
+                                else:
+                                    logger.info(f"[qa_allinone.py] {line}")
+                
+                    # stdout과 stderr를 동시에 처리
+                    await asyncio.gather(
+                        read_stream(process.stdout),
+                        read_stream(process.stderr, is_error=True)
+                    )
+                    
+                    # 프로세스 종료 대기
+                    return_code = process.wait()
+                else:
+                    # Render 배포 환경 또는 Linux/Mac
+                    logger.info("Render 배포 환경 또는 Linux/Mac에서 실행")
+                    process = await asyncio.create_subprocess_exec(
+                        sys.executable, str(script_path),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        cwd=str(Path(__file__).parent),
+                        env={**os.environ, 'PYTHONPATH': str(Path(__file__).parent)}
+                    )
+                    
+                    # 실시간 로그 처리
+                    error_output = []
+                    
+                    # stdout과 stderr를 비동기로 읽기
+                    async def read_stream(stream, is_error=False):
+                        while True:
+                            line = await stream.readline()
+                            if not line and process.returncode is not None:
+                                break
+                            if line:
+                                line = line.decode().strip()
+                                if is_error:
+                                    error_output.append(line)
+                                    logger.error(f"[qa_allinone.py] {line}")
+                                else:
+                                    logger.info(f"[qa_allinone.py] {line}")
+                    
+                    # stdout과 stderr를 동시에 처리
+                    await asyncio.gather(
+                        read_stream(process.stdout),
+                        read_stream(process.stderr, is_error=True)
+                    )
+                    
+                    # 프로세스 종료 대기
+                    return_code = await process.wait()
+                
+                logger.info(f"qa_allinone.py 종료 코드: {return_code}")
+                
+                if return_code != 0:
+                    error_message = "\n".join(error_output) if error_output else "알 수 없는 오류"
+                    raise Exception(f"qa_allinone.py 실행 실패 (종료 코드: {return_code}): {error_message}")
+                
+                # 벡터 DB 초기화
+                logger.info("FAQ 구조화 처리 완료. 이제 새로운 구조화된 데이터로 벡터 데이터베이스를 초기화합니다.")
+                
+                if not ENHANCED_FAQ_PATH.exists():
+                    raise FileNotFoundError(f"구조화된 FAQ 파일을 찾을 수 없습니다: {ENHANCED_FAQ_PATH}")
+                
+                if not load_enhanced_faq():
+                    raise Exception("구조화된 FAQ 데이터를 로드할 수 없습니다.")
+                
+                db_result = await initialize_vector_db(force_rebuild=True)
+                if not db_result["success"]:
+                    raise Exception(f"벡터 데이터베이스 초기화 실패: {db_result['message']}")
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"FAQ 처리 중 오류: {str(e)}")
+                import traceback
+                logger.error(f"상세 오류: {traceback.format_exc()}")
+                return False
         
-        if process.returncode != 0:
-            logger.error(f"FAQ 구조화 처리 실패: {process.stderr}")
+        # 비동기 작업 시작
+        task = asyncio.create_task(process_faq())
+        
+        # 작업 완료 대기
+        success = await task
+        
+        if success:
+            return {"success": True, "message": "FAQ 처리 및 벡터 데이터베이스 초기화가 완료되었습니다."}
+        else:
             return JSONResponse(
                 status_code=500,
-                content={"success": False, "message": f"FAQ 구조화 처리 실패: {process.stderr}"}
+                content={"success": False, "message": "FAQ 처리 중 오류가 발생했습니다. 로그를 확인해주세요."}
             )
-        
-        logger.info("FAQ 구조화 처리 완료. 이제 새로운 구조화된 데이터로 벡터 데이터베이스를 초기화합니다.")
-        
-        # 2단계: 새로 생성된 enhanced_qa_pairs.xlsx 기반으로 데이터 다시 로드
-        if not load_enhanced_faq():
-            return JSONResponse(
-                status_code=500,
-                content={"success": False, "message": "구조화된 FAQ 데이터를 로드할 수 없습니다."}
-            )
-        
-        # 3단계: 벡터 데이터베이스 초기화 - 강제로 다시 구축 (force_rebuild=True)
-        db_result = await initialize_vector_db(force_rebuild=True)
-        
-        if not db_result["success"]:
-            return JSONResponse(
-                status_code=500,
-                content={"success": False, "message": f"벡터 데이터베이스 초기화 실패: {db_result['message']}"}
-            )
-        
-        return {"success": True, "message": "FAQ 처리 및 벡터 데이터베이스 초기화가 완료되었습니다."}
         
     except Exception as e:
-        logger.error(f"FAQ 처리 중 오류 발생: {str(e)}")
+        logger.error(f"FAQ 처리 시작 중 오류: {str(e)}")
+        import traceback
+        logger.error(f"상세 오류: {traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
-            content={"success": False, "message": f"FAQ 처리 중 오류 발생: {str(e)}"}
+            content={"success": False, "message": f"FAQ 처리 시작 중 오류: {str(e)}"}
         )
 
 # 정적 파일 서빙 설정은 모든 API 엔드포인트 정의 후 맨 마지막에 위치
@@ -1252,4 +1410,19 @@ async def download_questions_excel():
         logger.error(f"Excel 파일 생성 중 오류 발생: {e}")
         import traceback
         logger.error(f"상세 오류: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download-enhanced-qa")
+async def download_enhanced_qa(filename: str = Query("enhanced_qa_pairs.xlsx")):
+    """구조화된 enhanced_qa_pairs.xlsx 파일을 다운로드합니다."""
+    try:
+        if not ENHANCED_FAQ_PATH.exists():
+            raise HTTPException(status_code=404, detail="enhanced_qa_pairs.xlsx 파일이 존재하지 않습니다.")
+        return FileResponse(
+            path=ENHANCED_FAQ_PATH,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        logger.error(f"enhanced_qa_pairs.xlsx 다운로드 중 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))

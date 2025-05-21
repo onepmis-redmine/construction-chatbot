@@ -9,6 +9,7 @@ from tqdm import tqdm
 import sys
 import codecs
 from typing import Dict
+import traceback  # 추가: 상세 에러 추적을 위해
 
 # Windows 콘솔 출력 인코딩 설정
 if sys.platform.startswith('win'):
@@ -36,7 +37,17 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 # 환경 변수 로드
 load_dotenv()
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-genai.configure(api_key=GOOGLE_API_KEY)
+if not GOOGLE_API_KEY:
+    print("ERROR: GOOGLE_API_KEY가 설정되지 않았습니다. .env 파일을 확인해주세요.")
+    print("현재 .env 파일 위치:", ROOT_DIR / ".env")
+    sys.exit(1)
+
+try:
+    genai.configure(api_key=GOOGLE_API_KEY)
+except Exception as e:
+    print(f"ERROR: Google API 설정 중 오류 발생: {str(e)}")
+    print("상세 에러:", traceback.format_exc())
+    sys.exit(1)
 
 # 로깅 설정
 log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
@@ -52,22 +63,32 @@ logger.addHandler(log_stream_handler)
 
 class QAProcessor:
     def __init__(self):
-        self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        logger.info("QAProcessor initialized successfully")
-        logger.info(f"EXCEL_PATH 확인: {EXCEL_PATH}, 존재여부: {EXCEL_PATH.exists()}")
+        try:
+            self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            logger.info("QAProcessor initialized successfully")
+            logger.info(f"EXCEL_PATH 확인: {EXCEL_PATH}, 존재여부: {EXCEL_PATH.exists()}")
+        except Exception as e:
+            print(f"ERROR: QAProcessor 초기화 중 오류 발생: {str(e)}")
+            print("상세 에러:", traceback.format_exc())
+            sys.exit(1)
 
     def read_qa_excel(self) -> pd.DataFrame:
         """FAQ 엑셀 파일을 읽어옵니다."""
         try:
             if not EXCEL_PATH.exists():
-                logger.error(f"FAQ 엑셀 파일이 없습니다: {EXCEL_PATH}")
-                raise FileNotFoundError(f"FAQ 엑셀 파일이 없습니다: {EXCEL_PATH}")
+                error_msg = f"FAQ 엑셀 파일이 없습니다: {EXCEL_PATH}"
+                logger.error(error_msg)
+                print(f"ERROR: {error_msg}")
+                raise FileNotFoundError(error_msg)
                 
             df = pd.read_excel(EXCEL_PATH)
             logger.info(f"Successfully read FAQ file: {EXCEL_PATH}")
             return df
         except Exception as e:
-            logger.error(f"Error reading FAQ file: {e}")
+            error_msg = f"Error reading FAQ file: {str(e)}"
+            logger.error(error_msg)
+            print(f"ERROR: {error_msg}")
+            print("상세 에러:", traceback.format_exc())
             raise
 
     def enhance_qa_pair(self, question: str, answer: str) -> Dict:
@@ -143,61 +164,88 @@ class QAProcessor:
             logger.info(f"Successfully enhanced Q&A pair: {question}")
             return enhanced_content
         except Exception as e:
-            logger.error(f"Error enhancing Q&A pair: {e}")
+            error_msg = f"Error enhancing Q&A pair: {str(e)}"
+            logger.error(error_msg)
+            print(f"ERROR: {error_msg}")
+            print("상세 에러:", traceback.format_exc())
             return None
 
     def process_and_enhance_qa(self):
         """FAQ를 읽고 구조화합니다."""
-        df = self.read_qa_excel()
-        enhanced_data = []
-
-        for idx, row in tqdm(df.iterrows(), total=len(df), desc="FAQ 구조화 중"):
-            question = str(row['질문']).strip()
-            answer = str(row['답변']).strip()
-            
-            enhanced = self.enhance_qa_pair(question, answer)
-            if enhanced:
-                # 데이터 검증
-                required_fields = ['question_variations', 'structured_answer', 'keywords']
-                if all(field in enhanced for field in required_fields):
-                    # JSON 필드를 문자열로 변환
-                    enhanced = {
-                        'original_question': question,
-                        'question_variations': json.dumps(enhanced['question_variations'], ensure_ascii=False, indent=2),
-                        'structured_answer': json.dumps(enhanced['structured_answer'], ensure_ascii=False, indent=2),
-                        'keywords': json.dumps(enhanced['keywords'], ensure_ascii=False, indent=2)
-                    }
-                    enhanced_data.append(enhanced)
-                    logger.info(f"Successfully processed Q&A pair {idx + 1}: {question}")
-                else:
-                    logger.error(f"Missing required fields in enhanced data for question: {question}")
-                
-            logger.info(f"Processed {idx + 1}/{len(df)} QA pairs")
-
-        if not enhanced_data:
-            logger.error("No FAQ data was successfully processed")
-            return []
-
-        # 결과를 새로운 엑셀 파일로 저장
-        output_df = pd.DataFrame(enhanced_data)
-        
-        # 저장 전 데이터 확인
-        logger.debug(f"Enhanced data before saving:\n{output_df.to_string()}")
-        
         try:
-            output_df.to_excel(ENHANCED_FAQ_PATH, index=False)
-            logger.info(f"Successfully saved enhanced FAQ to: {ENHANCED_FAQ_PATH}")
-        except Exception as e:
-            logger.error(f"Error saving enhanced FAQ: {e}")
+            df = self.read_qa_excel()
+            enhanced_data = []
+
+            for idx, row in tqdm(df.iterrows(), total=len(df), desc="FAQ 구조화 중"):
+                question = str(row['질문']).strip()
+                answer = str(row['답변']).strip()
+                
+                enhanced = self.enhance_qa_pair(question, answer)
+                if enhanced:
+                    # 데이터 검증
+                    required_fields = ['question_variations', 'structured_answer', 'keywords']
+                    if all(field in enhanced for field in required_fields):
+                        # JSON 필드를 문자열로 변환
+                        enhanced = {
+                            'original_question': question,
+                            'question_variations': json.dumps(enhanced['question_variations'], ensure_ascii=False, indent=2),
+                            'structured_answer': json.dumps(enhanced['structured_answer'], ensure_ascii=False, indent=2),
+                            'keywords': json.dumps(enhanced['keywords'], ensure_ascii=False, indent=2)
+                        }
+                        enhanced_data.append(enhanced)
+                        print(f"[구조화 결과] #{idx+1} 질문: {question}")
+                        print(f"[구조화 결과] 변형 질문: {enhanced['question_variations']}")
+                        print(f"[구조화 결과] 구조화 답변: {enhanced['structured_answer']}")
+                        print(f"[구조화 결과] 키워드: {enhanced['keywords']}")
+                        print(f"Successfully processed Q&A pair {idx + 1}: {question}")
+                    else:
+                        error_msg = f"Missing required fields in enhanced data for question: {question}"
+                        logger.error(error_msg)
+                        print(f"ERROR: {error_msg}")
+                logger.info(f"Processed {idx + 1}/{len(df)} QA pairs")
+
+            if not enhanced_data:
+                error_msg = "No FAQ data was successfully processed"
+                logger.error(error_msg)
+                print(f"ERROR: {error_msg}")
+                return []
+
+            # 결과를 새로운 엑셀 파일로 저장
+            output_df = pd.DataFrame(enhanced_data)
             
-        return enhanced_data
+            # 저장 전 데이터 확인
+            logger.debug(f"Enhanced data before saving:\n{output_df.to_string()}")
+            
+            try:
+                output_df.to_excel(ENHANCED_FAQ_PATH, index=False)
+                logger.info(f"Successfully saved enhanced FAQ to: {ENHANCED_FAQ_PATH}")
+            except Exception as e:
+                error_msg = f"Error saving enhanced FAQ: {str(e)}"
+                logger.error(error_msg)
+                print(f"ERROR: {error_msg}")
+                print("상세 에러:", traceback.format_exc())
+                
+            return enhanced_data
+        except Exception as e:
+            error_msg = f"Error in process_and_enhance_qa: {str(e)}"
+            logger.error(error_msg)
+            print(f"ERROR: {error_msg}")
+            print("상세 에러:", traceback.format_exc())
+            return []
 
 def process_qa_file():
     """FAQ 파일을 처리하고 구조화합니다."""
-    processor = QAProcessor()
-    enhanced_data = processor.process_and_enhance_qa()
-    logger.info(f"FAQ 구조화 완료. 총 {len(enhanced_data)}개의 FAQ가 처리되었습니다.")
-    return enhanced_data
+    try:
+        processor = QAProcessor()
+        enhanced_data = processor.process_and_enhance_qa()
+        logger.info(f"FAQ 구조화 완료. 총 {len(enhanced_data)}개의 FAQ가 처리되었습니다.")
+        return enhanced_data
+    except Exception as e:
+        error_msg = f"Error in process_qa_file: {str(e)}"
+        logger.error(error_msg)
+        print(f"ERROR: {error_msg}")
+        print("상세 에러:", traceback.format_exc())
+        return []
 
 def main():
     """메인 함수"""
@@ -206,7 +254,10 @@ def main():
         logger.info("FAQ 구조화 처리가 완료되었습니다.")
         return True
     except Exception as e:
-        logger.error(f"FAQ 구조화 처리 중 오류 발생: {e}")
+        error_msg = f"FAQ 구조화 처리 중 오류 발생: {str(e)}"
+        logger.error(error_msg)
+        print(f"ERROR: {error_msg}")
+        print("상세 에러:", traceback.format_exc())
         return False
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import "./App.css";
+import dayjs from "dayjs";
 
 // API 기본 URL 설정 - 개발/프로덕션 환경에 따라 다른 URL 사용
 const API_BASE_URL = process.env.NODE_ENV === 'development' 
@@ -231,6 +232,21 @@ function App() {
     window.open(downloadUrl, '_blank');
   };
 
+  // enhanced_qa_pairs.xlsx 다운로드 함수
+  const downloadEnhancedQA = () => {
+    // 현재 시간 포맷 (예: 202505211728)
+    const now = dayjs().format("YYYYMMDDHHmm");
+    const filename = `enhanced_qa_pairs_${now}.xlsx`;
+    const url = `${API_BASE_URL}/download-enhanced-qa?filename=${filename}`;
+    // a 태그를 동적으로 생성하여 다운로드 트리거
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -411,6 +427,14 @@ function App() {
             </button>
             {processingStatus && <div className="status-message">{processingStatus}</div>}
           </div>
+          
+          <button
+            onClick={downloadEnhancedQA}
+            className="download-excel-button"
+            title="구조화된 FAQ 엑셀 파일을 다운로드합니다"
+          >
+            구조화 FAQ 다운로드
+          </button>
         </div>
       )}
       

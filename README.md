@@ -98,6 +98,9 @@ docker images
 docker system prune -a
 
 
+### 가끔 서버 종료안될때
+taskkill /F /IM python.exe
+
 
 🧪 UI 개선 (Material UI, Tailwind 등)
 💬 챗봇 형식 변경 (대화 방식)
