@@ -3,12 +3,11 @@ FROM python:3.11-slim as builder
 
 WORKDIR /build
 
-# 필요한 빌드 도구 설치
-RUN apt-get update && apt-get install -y \
+# 필요한 빌드 도구만 설치하고 캐시 정리
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # 가상환경 생성 및 활성화
 RUN python -m venv /opt/venv
@@ -16,7 +15,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # 의존성 파일 복사 및 설치
 COPY api_server/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && rm -rf /root/.cache/pip/*
 
 # 최종 스테이지
 FROM python:3.11-slim as final
@@ -49,7 +49,11 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     # OpenRouter API 키
-    OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+    OPENROUTER_API_KEY=${OPENROUTER_API_KEY} \
+    # 메모리 최적화를 위한 환경 변수
+    PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128 \
+    TRANSFORMERS_OFFLINE=1 \
+    TOKENIZERS_PARALLELISM=false
 
 # 비특권 사용자로 실행
 USER appuser
