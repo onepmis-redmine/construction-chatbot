@@ -8,7 +8,8 @@
 
 ### 개발 도구
 - GitHub 저장소: https://github.com/onepmis-redmine/construction-chatbot
-- Cursor AI: https://www.cursor.com/ 
+- Cursor AI: https://www.cursor.com/ 계정 BIS-SEOUL(bolim.seoul@gmail.com)
+
 
 ### 배포
 -  Render: https://render.com   

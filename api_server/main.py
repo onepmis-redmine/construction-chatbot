@@ -29,6 +29,7 @@ import tempfile
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 import re
+import numpy as np
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -251,7 +252,25 @@ def get_embeddings(texts, batch_size=32):
         # 메모리 정리
         unload_model()
         
-        # 단일 텍스트인 경우에도 항상 리스트 반환하도록 변경
+        # 임베딩 형식 확인 및 로깅
+        if embeddings_list and len(embeddings_list) > 0:
+            logger.info(f"생성된 임베딩 형식: 차원 수 = {len(embeddings_list)}, 첫 임베딩 길이 = {len(embeddings_list[0])}")
+            
+            # 임베딩이 3차원 리스트인 경우 2차원으로 변환
+            if isinstance(embeddings_list[0], list) and isinstance(embeddings_list[0][0], list):
+                logger.info("3차원 임베딩을 2차원으로 변환합니다.")
+                embeddings_list = [emb[0] for emb in embeddings_list]
+            
+            # 단일 임베딩인 경우 리스트로 변환
+            elif not isinstance(embeddings_list[0], list):
+                embeddings_list = [embeddings_list]
+                logger.info("단일 임베딩을 리스트로 변환했습니다.")
+            
+            # 최종 형식 검증
+            if not all(isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb) for emb in embeddings_list):
+                logger.error("임베딩 형식이 올바르지 않습니다.")
+                return [[0.0] * 384 for _ in range(len(texts))]
+        
         return embeddings_list
     except Exception as e:
         logger.error(f"임베딩 생성 중 오류 발생: {e}")
@@ -259,7 +278,6 @@ def get_embeddings(texts, batch_size=32):
         logger.error(f"상세 오류: {traceback.format_exc()}")
         
         # 오류 발생 시 빈 임베딩 반환 (적절한 차원의 0 벡터)
-        # 모델 차원이 384이므로 그에 맞게 설정
         return [[0.0] * 384 for _ in range(len(texts))]
 
 # 세션 매니저 초기화
@@ -914,14 +932,42 @@ async def initialize_vector_db(force_rebuild=False):
                 # 배치 단위로 임베딩 생성
                 batch_embeddings = get_embeddings(batch)
                 
-                # 배치 결과가 단일 임베딩인 경우 리스트로 변환
-                if not isinstance(batch_embeddings[0], list):
-                    batch_embeddings = [batch_embeddings]
-                
-                embeddings.extend(batch_embeddings)
+                # 임베딩 형식 확인 및 수정
+                if batch_embeddings:
+                    # 만약 3차원 리스트라면 2차원으로 변환
+                    while isinstance(batch_embeddings, list) and len(batch_embeddings) > 0 and isinstance(batch_embeddings[0], list) and isinstance(batch_embeddings[0][0], list):
+                        batch_embeddings = [emb for sublist in batch_embeddings for emb in sublist]
+                        logger.info("3차원 임베딩을 2차원으로 변환했습니다.")
+
+                    # 만약 1차원 리스트(단일 벡터)라면 2차원으로 변환
+                    if batch_embeddings and isinstance(batch_embeddings[0], (float, int)):
+                        batch_embeddings = [batch_embeddings]
+                        logger.info("단일 임베딩을 리스트로 변환했습니다.")
+
+                    embeddings.extend(batch_embeddings)
             
             logger.info("임베딩 생성 완료! 이제 ChromaDB에 저장합니다...")
             
+            # 임베딩 형식 로깅 (디버깅용)
+            if embeddings:
+                logger.info(f"첫 번째 임베딩 차원 구조: {type(embeddings)}, {type(embeddings[0])}")
+                if isinstance(embeddings[0], list):
+                    logger.info(f"첫 번째 임베딩 길이: {len(embeddings[0])}")
+            
+            # 최종 임베딩 형식 검증
+            if not all(isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb) for emb in embeddings):
+                logger.error("임베딩 형식이 올바르지 않습니다.")
+                return {"success": False, "message": "임베딩 형식이 올바르지 않습니다."}
+            
+            # === 임베딩 차원 강제 변환 (최종 방어) ===
+            if isinstance(embeddings, np.ndarray):
+                embeddings = embeddings.tolist()
+            while isinstance(embeddings, list) and len(embeddings) > 0 and isinstance(embeddings[0], list) and isinstance(embeddings[0][0], list):
+                embeddings = [emb for sublist in embeddings for emb in sublist]
+            if embeddings and isinstance(embeddings[0], (float, int)):
+                embeddings = [embeddings]
+            # === 방어 끝 ===
+
             # 컬렉션에 추가
             collection.add(
                 embeddings=embeddings,
@@ -933,8 +979,13 @@ async def initialize_vector_db(force_rebuild=False):
             logger.info(f"벡터 데이터베이스에 {len(texts)}개 항목 추가 완료")
             
             # 간단한 테스트 쿼리 실행
+            test_emb = get_embeddings("테스트 쿼리")
+            while isinstance(test_emb, list) and len(test_emb) > 0 and isinstance(test_emb[0], list) and isinstance(test_emb[0][0], list):
+                test_emb = [emb for sublist in test_emb for emb in sublist]
+            if test_emb and isinstance(test_emb[0], (float, int)):
+                test_emb = [test_emb]
             test_result = collection.query(
-                query_embeddings=[get_embeddings("테스트 쿼리")],
+                query_embeddings=test_emb,
                 n_results=1
             )
             logger.info(f"벡터 DB 테스트 쿼리 결과: {test_result}")
