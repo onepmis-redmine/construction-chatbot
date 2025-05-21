@@ -15,7 +15,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 의존성 파일 복사 및 설치
-COPY requirements.txt .
+COPY api_server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 최종 스테이지
@@ -34,7 +34,7 @@ RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions && \
     chmod -R 755 /model_cache /vector_db /logs /docs /sessions /questions
 
 # 애플리케이션 파일 복사
-COPY . /app
+COPY api_server /app
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
@@ -51,4 +51,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
