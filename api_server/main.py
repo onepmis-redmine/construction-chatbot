@@ -70,6 +70,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",  # 로컬 개발 환경 우선
         "https://construction-chatbot-api.onrender.com",
+        "https://construction-chatbot-frontend.onrender.com",  # 프론트엔드 배포 URL 추가
         "*",  # 개발 중에는 모든 출처 허용 (프로덕션에서는 제거)
     ],
     allow_credentials=True,
