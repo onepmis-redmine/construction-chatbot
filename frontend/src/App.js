@@ -177,6 +177,15 @@ function App() {
         fileInputRef.current.value = '';
       }
       setSelectedFile(null);
+      
+      // 업로드가 완료되면 처리 버튼을 강조
+      const processButton = document.getElementById('process-excel-button');
+      if (processButton) {
+        processButton.classList.add('highlight-button');
+        setTimeout(() => {
+          processButton.classList.remove('highlight-button');
+        }, 3000);
+      }
     } catch (error) {
       console.error('파일 업로드 오류:', error);
       setUploadStatus(`업로드 실패: ${error.response?.data?.detail || error.message}`);
@@ -201,6 +210,9 @@ function App() {
             sources: []
           }
         ]);
+        
+        // 업로드 패널 닫기
+        setShowUploadPanel(false);
       } else {
         setProcessingStatus(`FAQ 처리 실패: ${response.data.message}`);
       }
@@ -343,45 +355,61 @@ function App() {
       
       {showUploadPanel && (
         <div className="upload-panel">
-          <h3>FAQ 엑셀 파일 업로드</h3>
+          <h3>FAQ 파일 업로드</h3>
+          
+          <div className="workflow-steps">
+            <div className="workflow-step">
+              <div className="step-number">1</div>
+              <div className="step-text">엑셀 파일 업로드</div>
+            </div>
+            <div className="workflow-step">
+              <div className="step-number">2</div>
+              <div className="step-text">FAQ 구조화 처리</div>
+            </div>
+            <div className="workflow-step">
+              <div className="step-number">3</div>
+              <div className="step-text">임베딩 생성</div>
+            </div>
+          </div>
+          
+          <div className="upload-instructions">
+            <p><strong>FAQ 관리 방법:</strong></p>
+            <ol>
+              <li>질문-답변이 포함된 엑셀 파일(.xlsx)을 업로드합니다.</li>
+              <li>'FAQ 구조화 처리 시작' 버튼을 클릭하여 자연어 처리와 벡터 임베딩을 생성합니다.</li>
+              <li>처리가 완료되면 챗봇이 FAQ를 활용할 수 있습니다.</li>
+            </ol>
+          </div>
+          
           <div className="file-upload-container">
             <input 
               type="file" 
+              className="file-input" 
               onChange={handleFileChange} 
-              accept=".xlsx,.xls" 
               ref={fileInputRef}
-              className="file-input"
+              accept=".xlsx,.xls"
             />
             <button 
-              onClick={uploadFile} 
-              disabled={!selectedFile}
-              className="upload-action-button"
+              className="upload-action-button" 
+              onClick={uploadFile}
+              disabled={!selectedFile || uploadStatus.includes('업로드 중')}
             >
-              파일 업로드
+              {uploadStatus.includes('업로드 중') ? '업로드 중...' : '파일 업로드'}
             </button>
           </div>
           
-          {uploadStatus && <p className="status-message">{uploadStatus}</p>}
+          {uploadStatus && <div className="status-message">{uploadStatus}</div>}
           
           <div className="process-container">
             <button 
               onClick={processExcel} 
               className="process-button"
               disabled={processingStatus.includes('FAQ 처리 중')}
+              id="process-excel-button"
             >
               FAQ 구조화 처리 시작
             </button>
-            {processingStatus && <p className="status-message">{processingStatus}</p>}
-          </div>
-          
-          <div className="upload-instructions">
-            <p><strong>사용 방법:</strong></p>
-            <ol>
-              <li>질문과 답변 컬럼이 포함된 Excel 파일을 선택합니다.</li>
-              <li>"파일 업로드" 버튼을 클릭하여 서버에 업로드합니다.</li>
-              <li>"FAQ 구조화 처리 시작" 버튼을 클릭하여 데이터를 처리합니다.</li>
-              <li>처리가 완료되면 챗봇에 질문을 입력할 수 있습니다.</li>
-            </ol>
+            {processingStatus && <div className="status-message">{processingStatus}</div>}
           </div>
         </div>
       )}

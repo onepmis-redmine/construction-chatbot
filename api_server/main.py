@@ -506,7 +506,7 @@ def find_faq_match(query: str, threshold: float = 0.75):
                     
                     if exact_match:
                         matching_keywords.append(keyword)
-                        keyword_bonus += 0.3  # 키워드당 0.3점 보너스
+                        keyword_bonus += 0  # 키워드당 0.3점 보너스
                         logger.info(f"정확한 키워드 매치: '{keyword}'")
                 
                 if matching_keywords:
@@ -640,9 +640,46 @@ async def ask_question(q: Question, request: Request):
                 # 구조화된 데이터 전달
                 response_data["structured_answer"] = structured_answer
                 
-                # 간단한 텍스트 형식으로 저장 (세션 저장용)
-                simple_text = "FAQ 답변이 제공되었습니다."
-                session_manager.add_message(q.session_id, "assistant", simple_text)
+                # 구조화된 답변을 읽기 쉬운 텍스트로 변환하여 세션에 저장
+                readable_text = ""
+                
+                # 원본 질문 추가
+                if "original_question" in faq_match:
+                    readable_text += f"질문: {faq_match['original_question']}\n\n"
+                
+                # 기본 규칙 추가
+                if "basic_rules" in structured_answer and structured_answer["basic_rules"]:
+                    readable_text += "• 기본 규칙:\n"
+                    for rule in structured_answer["basic_rules"]:
+                        readable_text += f"  - {rule}\n"
+                    readable_text += "\n"
+                
+                # 예시 추가
+                if "examples" in structured_answer and structured_answer["examples"]:
+                    readable_text += "• 예시:\n"
+                    for example in structured_answer["examples"]:
+                        if isinstance(example, dict):
+                            # 딕셔너리 형태의 예시는 시나리오와 결과로 구분하여 처리
+                            for key, value in example.items():
+                                if key.lower().startswith('scenario'):
+                                    readable_text += f"  📌 {value}\n"
+                                elif key.lower().startswith('result'):
+                                    readable_text += f"      ➡️ {value}\n"
+                                else:
+                                    readable_text += f"      • {key}: {value}\n"
+                        else:
+                            readable_text += f"  - {example}\n"
+                    readable_text += "\n"
+                
+                # 주의사항 추가
+                if "cautions" in structured_answer and structured_answer["cautions"]:
+                    readable_text += "• 주의사항:\n"
+                    for caution in structured_answer["cautions"]:
+                        readable_text += f"  - {caution}\n"
+                    readable_text += "\n"
+                
+                # 세션에 저장
+                session_manager.add_message(q.session_id, "assistant", readable_text)
                 
                 # 구조화된 답변을 문자열로 변환하여 저장
                 answer_text = json.dumps(structured_answer, ensure_ascii=False)
@@ -723,10 +760,33 @@ async def reload_faq():
     return {"status": "FAQ reloaded"}
 
 # 여기에서 initialize_vector_db 함수 수정
-async def initialize_vector_db():
-    """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다."""
+async def initialize_vector_db(force_rebuild=False):
+    """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다.
+    
+    Args:
+        force_rebuild (bool): True이면 기존 컬렉션 무시하고 새로 생성, False이면 기존 컬렉션 존재 시 재사용
+    """
     global collection
     try:
+        # 기존 컬렉션이 있는지 확인
+        existing_collection = False
+        try:
+            test_collection = chroma_client.get_collection(name=COLLECTION_NAME)
+            collection_count = test_collection.count()
+            if collection_count > 0:
+                existing_collection = True
+                logger.info(f"기존 컬렉션이 존재함: {COLLECTION_NAME}, 항목 수: {collection_count}")
+        except Exception as e:
+            logger.warning(f"기존 컬렉션 확인 중 오류 발생: {e}")
+            existing_collection = False
+        
+        # 기존 컬렉션이 있고 강제 재구축이 아니면 그대로 사용
+        if existing_collection and not force_rebuild:
+            collection = test_collection
+            logger.info(f"기존 컬렉션을 재사용합니다: {COLLECTION_NAME}")
+            return {"success": True, "message": f"기존 컬렉션 재사용 ({collection_count}개 항목)"}
+        
+        # 아래는 기존 임베딩 생성 코드 (새로 생성해야 하는 경우)
         if not load_enhanced_faq():
             logger.error("구조화된 FAQ 데이터를 로드할 수 없습니다.")
             return {"success": False, "message": "구조화된 FAQ 데이터를 로드할 수 없습니다."}
@@ -735,7 +795,7 @@ async def initialize_vector_db():
             logger.error("FAQ 데이터가 비어 있습니다.")
             return {"success": False, "message": "FAQ 데이터가 비어 있습니다."}
         
-        logger.info("Creating vector database from enhanced FAQ data...")
+        logger.info("새 벡터 데이터베이스를 생성합니다...")
         
         # 기존 컬렉션 삭제 후 재생성
         try:
@@ -916,9 +976,10 @@ async def check_file_changes():
                 if last_modified_time is None:
                     last_modified_time = current_mtime
                 elif current_mtime > last_modified_time:
-                    logger.info("qa_pairs.xlsx 파일이 변경되었습니다. 벡터 DB를 업데이트합니다.")
+                    logger.info("enhanced_qa_pairs.xlsx 파일이 변경되었습니다. 벡터 DB를 업데이트합니다.")
                     last_modified_time = current_mtime
-                    await initialize_vector_db()
+                    # 파일 변경 시에는 force_rebuild=True로 설정하여 임베딩 다시 생성
+                    await initialize_vector_db(force_rebuild=True)
             await asyncio.sleep(file_check_interval)
         except Exception as e:
             logger.error(f"파일 변경 확인 중 오류 발생: {e}")
@@ -960,8 +1021,9 @@ async def startup_event():
     """서버 시작 시 실행되는 이벤트 핸들러"""
     logger.info("서버 시작: 벡터 데이터베이스 초기화 시작")
     
-    # 초기 벡터 DB 초기화
-    await initialize_vector_db()
+    # 초기 벡터 DB 초기화 (force_rebuild=False로 설정하여 기존 임베딩 재사용)
+    init_result = await initialize_vector_db(force_rebuild=False)
+    logger.info(f"벡터 DB 초기화 결과: {init_result}")
     
     # 파일 감시 시작
     global last_modified_time
@@ -980,15 +1042,16 @@ async def startup_event():
 @app.get("/init-db")
 async def manual_initialize_database():
     """벡터 데이터베이스를 수동으로 초기화합니다."""
-    success = await initialize_vector_db()
-    if success:
-        return {"status": "success", "message": "데이터베이스가 성공적으로 초기화되었습니다."}
+    # 수동 초기화 시에는 force_rebuild=True로 설정
+    success = await initialize_vector_db(force_rebuild=True)
+    if success.get("success", False):
+        return {"status": "success", "message": success.get("message", "데이터베이스가 성공적으로 초기화되었습니다.")}
     else:
-        return {"status": "error", "message": "데이터베이스 초기화 중 오류가 발생했습니다."}
+        return {"status": "error", "message": success.get("message", "데이터베이스 초기화 중 오류가 발생했습니다.")}
 
 @app.post("/upload-excel")
 async def upload_excel(file: UploadFile = File(...)):
-    """Excel 파일을 업로드하고 벡터 데이터베이스를 업데이트합니다."""
+    """Excel 파일을 업로드하고 저장합니다."""
     try:
         # 파일 확장자 확인
         if not file.filename.endswith(('.xlsx', '.xls')):
@@ -1004,11 +1067,8 @@ async def upload_excel(file: UploadFile = File(...)):
         
         logger.info(f"Excel 파일이 성공적으로 업로드되었습니다: {save_path}")
         
-        # 벡터 DB 초기화 (자동 감지 기능이 이미 이 작업을 처리하지만, 명시적으로 호출)
-        await initialize_vector_db()
-        
         return JSONResponse(
-            content={"message": "Excel 파일이 성공적으로 업로드되었고, 벡터 데이터베이스가 업데이트되었습니다."},
+            content={"message": "Excel 파일이 성공적으로 업로드되었습니다. '처리하기' 버튼을 눌러 데이터를 구조화해주세요."},
             status_code=200
         )
     except Exception as e:
@@ -1029,7 +1089,7 @@ async def process_excel():
         
         logger.info("FAQ 구조화 처리 시작...")
         
-        # qa_allinone.py 실행
+        # 1단계: qa_allinone.py 실행하여 구조화된 FAQ 생성
         script_path = Path(__file__).parent / "qa_allinone.py"
         process = subprocess.run([sys.executable, str(script_path)], 
                                  capture_output=True, text=True, encoding='utf-8')
@@ -1041,10 +1101,17 @@ async def process_excel():
                 content={"success": False, "message": f"FAQ 구조화 처리 실패: {process.stderr}"}
             )
         
-        logger.info("FAQ 구조화 처리 완료. 이제 벡터 데이터베이스를 초기화합니다.")
+        logger.info("FAQ 구조화 처리 완료. 이제 새로운 구조화된 데이터로 벡터 데이터베이스를 초기화합니다.")
         
-        # 벡터 데이터베이스 초기화 - 완료될 때까지 기다림
-        db_result = await initialize_vector_db()
+        # 2단계: 새로 생성된 enhanced_qa_pairs.xlsx 기반으로 데이터 다시 로드
+        if not load_enhanced_faq():
+            return JSONResponse(
+                status_code=500,
+                content={"success": False, "message": "구조화된 FAQ 데이터를 로드할 수 없습니다."}
+            )
+        
+        # 3단계: 벡터 데이터베이스 초기화 - 강제로 다시 구축 (force_rebuild=True)
+        db_result = await initialize_vector_db(force_rebuild=True)
         
         if not db_result["success"]:
             return JSONResponse(
