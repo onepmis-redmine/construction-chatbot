@@ -10,6 +10,9 @@ logs/
 vector_db/*/
 vector_db/*.sqlite3
 
+# 세션 데이터
+sessions/
+
 # Python
 __pycache__/
 *.py[cod]
