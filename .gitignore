@@ -1,4 +1,6 @@
+# 외부공개 절대 금지
 .env
+SECRETS.md
 
 # 로그 파일
 *.log

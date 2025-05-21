@@ -2,20 +2,19 @@
 
 ## 개발 환경 설정
 
+> **중요**: 민감한 인증 정보 및 API 키는 `SECRETS.md` 파일을 참조하세요.
+> 이 파일은 git으로 관리되지 않습니다.
+
 ### API 키 설정
-- OpenAI GPT-3.5-turbo: https://openrouter.ai/models?q=keys
-- Google AI: https://makersuite.google.com/app/apikey
+- OpenAI GPT API (자세한 정보는 SECRETS.md 참조)
+- Google AI API (자세한 정보는 SECRETS.md 참조)
 
 ### 개발 도구
-- GitHub 저장소: https://github.com/onepmis-redmine/construction-chatbot
-- Cursor AI: https://www.cursor.com/ 계정 BIS-SEOUL(bolim.seoul@gmail.com)
-
+- GitHub 저장소 (접속 정보는 SECRETS.md 참조)
+- Cursor AI 활용
 
 ### 배포
--  Render: https://render.com   
--  배포 url: https://construction-chatbot-api.onrender.com
-
-
+- Render를 통한 배포 (접속 정보는 SECRETS.md 참조)
 
 ## 프로젝트 구성
 
@@ -90,7 +89,6 @@ git add .
 git commit -m "커밋 메시지"
 git push origin main
 ```
-
 
 🧪 UI 개선 (Material UI, Tailwind 등)
 💬 챗봇 형식 변경 (대화 방식)
