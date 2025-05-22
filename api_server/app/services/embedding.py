@@ -12,15 +12,24 @@ class EmbeddingService:
         self.model = None
 
     def load_model(self):
-        if self.tokenizer is None:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=False)
-        if self.model is None:
-            self.model = AutoModel.from_pretrained(
-                self.model_name,
-                local_files_only=False
-            )
-            self.model.eval()
-        return self.tokenizer, self.model
+        try:
+            if self.tokenizer is None:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_name,
+                    local_files_only=True,
+                    cache_dir="model_cache"
+                )
+            if self.model is None:
+                self.model = AutoModel.from_pretrained(
+                    self.model_name,
+                    local_files_only=True,
+                    cache_dir="model_cache"
+                )
+                self.model.eval()
+            return self.tokenizer, self.model
+        except Exception as e:
+            logger.error(f"모델 로딩 중 오류 발생: {str(e)}")
+            raise
 
     def unload_model(self):
         del self.tokenizer

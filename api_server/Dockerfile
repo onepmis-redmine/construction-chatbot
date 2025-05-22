@@ -18,6 +18,11 @@ COPY api_server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache/pip/*
 
+# 모델 미리 다운로드
+RUN python -c "from transformers import AutoTokenizer, AutoModel; \
+    AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='model_cache'); \
+    AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='model_cache')"
+
 # 최종 스테이지
 FROM python:3.11-slim as final
 
