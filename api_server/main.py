@@ -30,6 +30,7 @@ from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 import re
 import numpy as np
+import psutil
 
 # 모듈별로 로거 생성
 logger = get_logger(__name__)
@@ -1080,13 +1081,78 @@ async def ping():
     """서버가 활성 상태임을 확인하는 단순 엔드포인트"""
     return {"status": "alive", "timestamp": datetime.now().isoformat()}
 
+# 시스템 정보 수집 함수
+def collect_system_info():
+    """시스템 리소스 사용량을 수집하여 반환합니다."""
+    try:
+        # 프로세스 정보 가져오기
+        process = psutil.Process()
+        
+        # 메모리 정보
+        memory_info = process.memory_info()
+        memory_percent = process.memory_percent()
+        
+        # 시스템 전체 메모리 정보
+        system_memory = psutil.virtual_memory()
+        
+        # CPU 사용량
+        cpu_percent = process.cpu_percent(interval=1)
+        
+        # 디스크 사용량
+        disk_usage = psutil.disk_usage('/')
+        
+        info = {
+            "process_memory": {
+                "rss": f"{memory_info.rss / 1024 / 1024:.2f} MB",  # 실제 물리적 메모리 사용량
+                "vms": f"{memory_info.vms / 1024 / 1024:.2f} MB",  # 가상 메모리 사용량
+                "percent": f"{memory_percent:.2f}%"
+            },
+            "system_memory": {
+                "total": f"{system_memory.total / 1024 / 1024:.2f} MB",
+                "available": f"{system_memory.available / 1024 / 1024:.2f} MB",
+                "used": f"{system_memory.used / 1024 / 1024:.2f} MB",
+                "percent": f"{system_memory.percent}%"
+            },
+            "cpu": {
+                "percent": f"{cpu_percent}%"
+            },
+            "disk": {
+                "total": f"{disk_usage.total / 1024 / 1024:.2f} MB",
+                "used": f"{disk_usage.used / 1024 / 1024:.2f} MB",
+                "free": f"{disk_usage.free / 1024 / 1024:.2f} MB",
+                "percent": f"{disk_usage.percent}%"
+            }
+        }
+        
+        # 메모리 사용량이 80%를 초과하면 경고 로그
+        if system_memory.percent > 80:
+            logger.warning(f"메모리 사용량이 높습니다! ({system_memory.percent}%)")
+        
+        return info
+    except Exception as e:
+        logger.error(f"시스템 정보 수집 중 오류 발생: {e}")
+        return {"error": str(e)}
+
+@app.get("/system-info")
+async def get_system_info():
+    """시스템 리소스 사용량을 반환합니다."""
+    return collect_system_info()
+
 # 자동 핑을 위한 백그라운드 태스크
 async def keep_alive():
-    """서버가 슬립 상태로 전환되지 않도록 주기적으로 자체 핑을 수행"""
+    """서버가 슬립 상태로 전환되지 않도록 주기적으로 자체 핑을 수행하고 시스템 정보를 모니터링"""
     while True:
         try:
             # 5분마다 자체 ping (Render 무료 플랜 타임아웃은 일반적으로 15분)
             await asyncio.sleep(300)
+            
+            # 시스템 정보 수집 및 로깅
+            system_info = collect_system_info()
+            logger.info("시스템 리소스 사용량:")
+            logger.info(f"- 프로세스 메모리 (RSS): {system_info['process_memory']['rss']}")
+            logger.info(f"- 시스템 메모리 사용률: {system_info['system_memory']['percent']}")
+            logger.info(f"- CPU 사용률: {system_info['cpu']['percent']}")
+            
             async with httpx.AsyncClient() as client:
                 # 현재 서버 URL 동적 생성
                 host = "localhost"
