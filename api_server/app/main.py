@@ -3,7 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 
-from app.config import CORS_ORIGINS, FRONTEND_BUILD_DIR
+from app.config import (
+    CORS_ORIGINS, 
+    FRONTEND_BUILD_DIR, 
+    VECTOR_DB_PATH,
+    MODEL_CACHE_DIR
+)
 from app.models.faq import Question, FAQResponse
 from app.services.faq_service import FAQService
 from app.services.vector_db import VectorDBService
@@ -26,7 +31,7 @@ app.add_middleware(
 )
 
 # 서비스 초기화
-vector_db_service = VectorDBService()
+vector_db_service = VectorDBService(vector_db_path=VECTOR_DB_PATH)
 embedding_service = EmbeddingService()
 faq_service = FAQService(
     vector_db_service=vector_db_service,

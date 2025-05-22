@@ -51,6 +51,7 @@ RUN chown -R appuser:appuser /docs
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
+    HF_HOME=/model_cache \
     TRANSFORMERS_CACHE=/model_cache \
     TORCH_HOME=/model_cache \
     # Render 환경 감지를 위한 환경 변수
