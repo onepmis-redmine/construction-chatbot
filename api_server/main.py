@@ -175,17 +175,17 @@ load_enhanced_faq()
 
 # 모델 설정
 model_name = "sentence-transformers/all-MiniLM-L6-v2"
-tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=False)
 model = None
 
 def load_model():
     global tokenizer, model
     if tokenizer is None:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
+        tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=False)
     if model is None:
         model = AutoModel.from_pretrained(
             model_name,
-            local_files_only=True
+            local_files_only=False
         )
         model.eval()  # 평가 모드로 설정
     return tokenizer, model
