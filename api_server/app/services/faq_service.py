@@ -65,9 +65,23 @@ class FAQService:
                 return False
             
             # 벡터 DB 초기화
-            self.vector_db_service.initialize()
+            if not self.vector_db_service.initialize():
+                logger.error("벡터 DB 초기화에 실패했습니다.")
+                return False
+            
+            # 기존 데이터 삭제
+            try:
+                self.vector_db_service.client.delete_collection(self.vector_db_service.collection_name)
+                self.vector_db_service.collection = None
+                logger.info("기존 컬렉션을 삭제했습니다.")
+            except Exception as e:
+                logger.warning(f"기존 컬렉션 삭제 중 오류 발생: {e}")
+            
+            # 새 컬렉션 생성
+            self.vector_db_service._get_or_create_collection()
             
             # 각 FAQ 항목에 대해 임베딩 생성 및 저장
+            success_count = 0
             for idx, row in self.faq_data.iterrows():
                 try:
                     # 질문 변형들을 하나의 문자열로 결합
@@ -78,7 +92,7 @@ class FAQService:
                     embedding = self.embedding_service.get_embeddings(combined_text)[0]
                     
                     # 벡터 DB에 저장
-                    self.vector_db_service.collection.add(
+                    if self.vector_db_service.add_documents(
                         embeddings=[embedding],
                         documents=[combined_text],
                         metadatas=[{
@@ -87,13 +101,20 @@ class FAQService:
                             "keywords": row['keywords']
                         }],
                         ids=[f"faq_{idx}"]
-                    )
+                    ):
+                        success_count += 1
                     
                 except Exception as e:
                     logger.error(f"FAQ 항목 처리 중 오류 발생 (인덱스 {idx}): {str(e)}")
                     continue
             
-            logger.info("FAQ 데이터가 성공적으로 처리되었습니다.")
+            # 처리 결과 확인
+            total_count = len(self.faq_data)
+            if success_count == 0:
+                logger.error("FAQ 데이터 처리에 실패했습니다.")
+                return False
+            
+            logger.info(f"FAQ 데이터 처리 완료: {success_count}/{total_count} 항목 성공")
             return True
             
         except Exception as e:
