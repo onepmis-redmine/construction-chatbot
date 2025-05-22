@@ -477,7 +477,7 @@ def find_faq_match(query: str, threshold: float = 0.75):
                     except Exception as e:
                         logger.error(f"키워드 파싱 오류: {e}")
                 
-                logger.info(f"FAQ 항목 {idx}: 원본 질문: '{original_question}', 키워드: {keywords}")
+                logger.info(f"FAQ 항목 {idx + 1}/{len(faq_data)}: 원본 질문: '{original_question}', 키워드: {keywords}")
                 
                 # 키워드 매칭 점수 계산
                 keyword_bonus = 0.0
@@ -1172,6 +1172,7 @@ async def keep_alive():
 
 # 전역 변수로 태스크 저장
 background_tasks = set()
+active_processes = set()  # 활성 프로세스 추적을 위한 세트 추가
 
 @app.on_event("startup")
 async def startup_event():
@@ -1202,7 +1203,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """서버 종료 시 실행되는 이벤트 핸들러"""
-    logger.info("서버 종료: 백그라운드 태스크 정리 시작")
+    logger.info("서버 종료: 백그라운드 태스크 및 프로세스 정리 시작")
     
     # 모든 백그라운드 태스크 취소
     for task in background_tasks:
@@ -1212,7 +1213,24 @@ async def shutdown_event():
     if background_tasks:
         await asyncio.gather(*background_tasks, return_exceptions=True)
     
-    logger.info("서버 종료: 모든 백그라운드 태스크 정리 완료")
+    # 활성 프로세스 종료
+    for process in active_processes:
+        try:
+            if process.poll() is None:  # 프로세스가 아직 실행 중인 경우
+                process.terminate()  # 먼저 정상 종료 시도
+                try:
+                    process.wait(timeout=5)  # 5초 동안 대기
+                except subprocess.TimeoutExpired:
+                    process.kill()  # 강제 종료
+        except Exception as e:
+            logger.error(f"프로세스 종료 중 오류: {e}")
+    
+    # 메모리 정리
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    
+    logger.info("서버 종료: 모든 백그라운드 태스크 및 프로세스 정리 완료")
 
 # 수동 초기화용 엔드포인트 (필요시 재초기화 가능)
 @app.get("/init-db")
@@ -1292,6 +1310,9 @@ async def process_excel():
                         env={**os.environ, 'PYTHONPATH': str(Path(__file__).parent)}
                     )
                     
+                    # 프로세스를 활성 프로세스 세트에 추가
+                    active_processes.add(process)
+                    
                     # 실시간 로그 처리
                     error_output = []
                     
@@ -1317,6 +1338,9 @@ async def process_excel():
                     
                     # 프로세스 종료 대기
                     return_code = process.wait()
+                    
+                    # 프로세스를 활성 프로세스 세트에서 제거
+                    active_processes.discard(process)
                 else:
                     # Render 배포 환경 또는 Linux/Mac
                     logger.info("Render 배포 환경 또는 Linux/Mac에서 실행")
@@ -1327,6 +1351,9 @@ async def process_excel():
                         cwd=str(Path(__file__).parent),
                         env={**os.environ, 'PYTHONPATH': str(Path(__file__).parent)}
                     )
+                    
+                    # 프로세스를 활성 프로세스 세트에 추가
+                    active_processes.add(process)
                     
                     # 실시간 로그 처리
                     error_output = []
@@ -1353,6 +1380,9 @@ async def process_excel():
                     
                     # 프로세스 종료 대기
                     return_code = await process.wait()
+                    
+                    # 프로세스를 활성 프로세스 세트에서 제거
+                    active_processes.discard(process)
                 
                 logger.info(f"qa_allinone.py 종료 코드: {return_code}")
                 
