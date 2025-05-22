@@ -19,9 +19,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /root/.cache/pip/*
 
 # 모델 미리 다운로드
-RUN python -c "from transformers import AutoTokenizer, AutoModel; \
-    AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='model_cache'); \
-    AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='model_cache')"
+RUN mkdir -p /build/model_cache && \
+    python -c "from transformers import AutoTokenizer, AutoModel; \
+    AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='/build/model_cache'); \
+    AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2', cache_dir='/build/model_cache')"
 
 # 최종 스테이지
 FROM python:3.11-slim as final
@@ -32,8 +33,11 @@ WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# 모델 캐시 복사
+COPY --from=builder /build/model_cache /model_cache
+
 # 필요한 디렉토리 생성 및 권한 설정
-RUN mkdir -p /model_cache /vector_db /logs /docs /sessions /questions /frontend/build && \
+RUN mkdir -p /vector_db /logs /docs /sessions /questions /frontend/build && \
     adduser --disabled-password --gecos "" appuser && \
     chown -R appuser:appuser /app /model_cache /vector_db /logs /docs /sessions /questions /frontend && \
     chmod -R 755 /app /model_cache /vector_db /logs /docs /sessions /questions /frontend
@@ -66,4 +70,4 @@ USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
