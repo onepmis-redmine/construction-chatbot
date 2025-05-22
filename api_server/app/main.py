@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import pandas as pd
 from pathlib import Path
+import json
 
 from app.config import (
     CORS_ORIGINS, 
@@ -118,6 +119,23 @@ async def upload_excel(file: UploadFile = File(...)):
             
     except Exception as e:
         logger.error(f"파일 업로드 중 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process-excel")
+async def process_excel():
+    """업로드된 Excel 파일을 처리하고 벡터 DB에 저장하는 엔드포인트"""
+    try:
+        # FAQ 데이터 로드 및 처리
+        if not faq_service.load_enhanced_faq():
+            raise HTTPException(status_code=500, detail="FAQ 데이터 로드 중 오류가 발생했습니다.")
+        
+        if not faq_service.process_faq_data():
+            raise HTTPException(status_code=500, detail="FAQ 데이터 처리 중 오류가 발생했습니다.")
+        
+        return {"message": "FAQ 데이터가 성공적으로 처리되었습니다."}
+        
+    except Exception as e:
+        logger.error(f"Excel 처리 중 오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # 정적 파일 서빙 설정

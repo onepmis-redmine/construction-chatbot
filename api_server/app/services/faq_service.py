@@ -57,6 +57,49 @@ class FAQService:
             self.faq_data = None
             return False
 
+    def process_faq_data(self):
+        """FAQ 데이터를 처리하고 벡터 DB에 저장합니다."""
+        try:
+            if self.faq_data is None or self.faq_data.empty:
+                logger.error("FAQ 데이터가 비어있습니다.")
+                return False
+            
+            # 벡터 DB 초기화
+            self.vector_db_service.initialize()
+            
+            # 각 FAQ 항목에 대해 임베딩 생성 및 저장
+            for idx, row in self.faq_data.iterrows():
+                try:
+                    # 질문 변형들을 하나의 문자열로 결합
+                    question_variations = json.loads(row['question_variations'])
+                    combined_text = f"{row['original_question']} {' '.join(question_variations)}"
+                    
+                    # 임베딩 생성
+                    embedding = self.embedding_service.get_embeddings(combined_text)[0]
+                    
+                    # 벡터 DB에 저장
+                    self.vector_db_service.collection.add(
+                        embeddings=[embedding],
+                        documents=[combined_text],
+                        metadatas=[{
+                            "original_question": row['original_question'],
+                            "structured_answer": row['structured_answer'],
+                            "keywords": row['keywords']
+                        }],
+                        ids=[f"faq_{idx}"]
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"FAQ 항목 처리 중 오류 발생 (인덱스 {idx}): {str(e)}")
+                    continue
+            
+            logger.info("FAQ 데이터가 성공적으로 처리되었습니다.")
+            return True
+            
+        except Exception as e:
+            logger.error(f"FAQ 데이터 처리 중 오류 발생: {str(e)}")
+            return False
+
     def find_faq_match(self, query: str, threshold: float = 0.75):
         """질문에 가장 잘 맞는 FAQ를 찾습니다."""
         try:
