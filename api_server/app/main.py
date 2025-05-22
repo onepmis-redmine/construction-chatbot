@@ -7,7 +7,8 @@ from app.config import (
     CORS_ORIGINS, 
     FRONTEND_BUILD_DIR, 
     VECTOR_DB_PATH,
-    MODEL_CACHE_DIR
+    MODEL_CACHE_DIR,
+    ENHANCED_FAQ_PATH
 )
 from app.models.faq import Question, FAQResponse
 from app.services.faq_service import FAQService
@@ -34,6 +35,7 @@ app.add_middleware(
 vector_db_service = VectorDBService(vector_db_path=VECTOR_DB_PATH)
 embedding_service = EmbeddingService()
 faq_service = FAQService(
+    enhanced_faq_path=ENHANCED_FAQ_PATH,
     vector_db_service=vector_db_service,
     embedding_service=embedding_service
 )
