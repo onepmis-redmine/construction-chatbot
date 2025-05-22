@@ -33,7 +33,7 @@ app.add_middleware(
 
 # 서비스 초기화
 vector_db_service = VectorDBService(vector_db_path=VECTOR_DB_PATH)
-embedding_service = EmbeddingService()
+embedding_service = EmbeddingService(cache_dir=MODEL_CACHE_DIR)
 faq_service = FAQService(
     vector_db_service=vector_db_service,
     embedding_service=embedding_service,
