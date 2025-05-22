@@ -35,9 +35,9 @@ app.add_middleware(
 vector_db_service = VectorDBService(vector_db_path=VECTOR_DB_PATH)
 embedding_service = EmbeddingService()
 faq_service = FAQService(
-    enhanced_faq_path=ENHANCED_FAQ_PATH,
     vector_db_service=vector_db_service,
-    embedding_service=embedding_service
+    embedding_service=embedding_service,
+    enhanced_faq_path=ENHANCED_FAQ_PATH
 )
 
 @app.on_event("startup")

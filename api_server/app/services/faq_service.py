@@ -8,16 +8,16 @@ from .vector_db import VectorDBService
 logger = get_logger(__name__)
 
 class FAQService:
-    def __init__(self, enhanced_faq_path: Path, vector_db_service: VectorDBService, embedding_service: EmbeddingService):
-        self.enhanced_faq_path = enhanced_faq_path
+    def __init__(self, vector_db_service: VectorDBService, embedding_service: EmbeddingService, enhanced_faq_path: Path = None):
         self.vector_db_service = vector_db_service
         self.embedding_service = embedding_service
+        self.enhanced_faq_path = enhanced_faq_path
         self.faq_data = None
 
     def load_enhanced_faq(self):
         """구조화된 FAQ 데이터를 로드합니다."""
         try:
-            if not self.enhanced_faq_path.exists():
+            if not self.enhanced_faq_path or not self.enhanced_faq_path.exists():
                 logger.error(f"Enhanced FAQ file not found at: {self.enhanced_faq_path}")
                 return False
                 
