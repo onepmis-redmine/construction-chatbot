@@ -19,8 +19,8 @@ if sys.platform.startswith('win'):
 # 프로젝트 루트 디렉토리 설정
 ROOT_DIR = Path(__file__).parent.parent
 DOCS_DIR = ROOT_DIR / "docs"
-EXCEL_PATH = DOCS_DIR / "qa_pairs.xlsx"
-ENHANCED_FAQ_PATH = DOCS_DIR / "enhanced_qa_pairs.xlsx"
+EXCEL_PATH = Path("docs/qa_pairs.xlsx")
+ENHANCED_FAQ_PATH = Path("docs/enhanced_qa_pairs.xlsx")
 LOG_DIR = ROOT_DIR / "logs"
 
 # 경로 디버깅 로그 추가

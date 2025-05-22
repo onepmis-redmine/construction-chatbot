@@ -38,6 +38,7 @@ COPY api_server/ .
 
 # FAQ 파일 복사
 COPY docs/enhanced_qa_pairs.xlsx /docs/
+RUN chown -R appuser:appuser /docs
 
 # 환경 변수 설정
 ENV PYTHONUNBUFFERED=1 \
