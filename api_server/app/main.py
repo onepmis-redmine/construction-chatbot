@@ -1,7 +1,9 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+import pandas as pd
+from pathlib import Path
 
 from app.config import (
     CORS_ORIGINS, 
@@ -75,6 +77,47 @@ async def get_faq_answer(question: Question):
         return await faq_service.find_faq_match(question.query)
     except Exception as e:
         logger.error(f"FAQ 처리 중 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/ask", response_model=FAQResponse)
+async def ask_question(question: Question):
+    """질문에 대한 답변을 제공하는 엔드포인트"""
+    try:
+        result = faq_service.find_faq_match(question.query)
+        if result is None:
+            return FAQResponse(
+                answer="죄송합니다. 해당 질문에 대한 답변을 찾을 수 없습니다.",
+                sources=[],
+                is_faq=False
+            )
+        return result
+    except Exception as e:
+        logger.error(f"질문 처리 중 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/upload-excel")
+async def upload_excel(file: UploadFile = File(...)):
+    """Excel 파일을 업로드하고 FAQ 데이터를 업데이트하는 엔드포인트"""
+    try:
+        if not file.filename.endswith(('.xlsx', '.xls')):
+            raise HTTPException(status_code=400, detail="Excel 파일만 업로드 가능합니다.")
+        
+        # 파일 저장
+        file_path = Path("docs") / "enhanced_qa_pairs.xlsx"
+        file_path.parent.mkdir(exist_ok=True)
+        
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        # FAQ 데이터 다시 로드
+        if faq_service.load_enhanced_faq():
+            return {"message": "FAQ 데이터가 성공적으로 업데이트되었습니다."}
+        else:
+            raise HTTPException(status_code=500, detail="FAQ 데이터 로드 중 오류가 발생했습니다.")
+            
+    except Exception as e:
+        logger.error(f"파일 업로드 중 오류 발생: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # 정적 파일 서빙 설정
