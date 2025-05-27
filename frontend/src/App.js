@@ -14,7 +14,7 @@ console.log(`운영 모드: ${process.env.NODE_ENV}, API URL: ${API_BASE_URL}`);
 const formatStructuredAnswer = (structuredAnswer) => {
   if (!structuredAnswer) return "답변 데이터가 없습니다.";
   
-  let formatted = "답변:\n\n";
+  let formatted = "";
   
   // 기본 규칙 포맷팅
   if (structuredAnswer.basic_rules && structuredAnswer.basic_rules.length > 0) {
@@ -53,11 +53,13 @@ const formatStructuredAnswer = (structuredAnswer) => {
     structuredAnswer.cautions.forEach(caution => {
       formatted += `  - ${caution}\n`;
     });
-    formatted += "\n";
   }
   
   return formatted;
 };
+
+// 기본 문구 상수 정의
+const DEFAULT_WELCOME_MESSAGE = "안녕하세요! 건설정보시스템에 대해 궁금하신 점을 말씀해주세요."+"\n"+"새 주제가 필요하면 대화 초기화 버튼을 이용하세요.";
 
 function App() {
   const [messages, setMessages] = useState(() => {
@@ -329,7 +331,7 @@ function App() {
   // 대화 초기화
   const clearChat = () => {
     setMessages([
-      { role: "bot", content: "안녕하세요! 건설정보시스템에 대해 궁금하신 점을 말씀해주세요.", sources: [] },
+      { role: "bot", content: DEFAULT_WELCOME_MESSAGE, sources: [] },
     ]);
     setSessionId(null);
     localStorage.removeItem("sessionId");
@@ -337,6 +339,15 @@ function App() {
     setLoading(false);
     console.log("대화 초기화 버튼 클릭");
   };
+
+  // 컴포넌트 마운트 시 초기 메시지 설정
+  useEffect(() => {
+    setMessages([{
+      role: 'bot',
+      content: DEFAULT_WELCOME_MESSAGE,
+      sources: []
+    }]);
+  }, []);
 
   return (
     <div className="app-container">

@@ -10,6 +10,7 @@ import json
 from datetime import datetime
 from pydantic import BaseModel
 import pandas as pd
+import uuid  # UUID 생성을 위해 추가
 
 # 현재 디렉토리의 모듈 직접 참조
 import vector_db
@@ -135,7 +136,7 @@ async def ask_question(request: Request) -> Dict:
         
         # 세션 관리
         if not session_id:
-            session_id = datetime.now().strftime("%Y%m%d%H%M%S")
+            session_id = str(uuid.uuid4())  # UUID로 세션 ID 생성
             session_data = session_manager.create_session(session_id)
             logger.info(f"새 세션 생성: {session_id}")
         else:
