@@ -8,6 +8,7 @@ import os
 import google.generativeai as genai
 from dotenv import load_dotenv
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 상위 디렉토리를 Python 경로에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -264,16 +265,13 @@ class FAQProcessor:
             
             logger.info(f"벡터 검색 시작: {query}")
             
-            # 기존 방식으로 돌아가기: 모든 FAQ 항목을 직접 비교
-            best_match = None
-            highest_similarity = -1
-            
             # 쿼리에 포함된 단어 목록
             query_words = set(query.split())
             
-            # 각 FAQ 항목과 비교
-            for idx, row in self.faq_data.iterrows():
+            def process_faq_row(row_data):
+                """FAQ 항목 하나의 유사도를 계산하는 함수"""
                 try:
+                    idx, row = row_data
                     original_question = row.get('original_question', '')
                     variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
                     
@@ -289,15 +287,12 @@ class FAQProcessor:
                         except Exception as e:
                             logger.error(f"키워드 파싱 오류: {e}")
                     
-                    logger.info(f"FAQ 항목 {idx + 1}/{len(self.faq_data)}: 원본 질문: '{original_question}', 키워드: {keywords}")
-                    
                     # 키워드 매칭 점수 계산
                     keyword_bonus = 0.0
                     matching_keywords = []
                     
                     for keyword in keywords:
                         # 정확한 키워드 매칭 확인 (부분 매칭이 아닌 완전 일치)
-                        # 1. 쿼리에 키워드가 정확히 포함되는지 확인 (단어 경계 고려)
                         exact_match = False
                         
                         # 키워드를 소문자로 변환하고 공백 처리
@@ -341,9 +336,6 @@ class FAQProcessor:
                             keyword_bonus += 0.3  # 키워드당 0.3점 보너스
                             logger.info(f"정확한 키워드 매치: '{keyword}'")
                     
-                    if matching_keywords:
-                        logger.info(f"키워드 매치 발견: {matching_keywords}, 보너스: {keyword_bonus}")
-                    
                     # 원본 질문과의 유사도 계산
                     try:
                         # 원본 질문 임베딩
@@ -384,16 +376,36 @@ class FAQProcessor:
                         logger.info(f"- 키워드 보너스: {keyword_bonus:.2f}")
                         logger.info(f"- 최종 유사도: {adjusted_similarity:.4f}")
                         
-                        if adjusted_similarity > highest_similarity:
-                            highest_similarity = adjusted_similarity
-                            best_match = row
-                            logger.info(f"새 최고 매치: '{original_question}', 유사도: {adjusted_similarity:.4f}, 매칭 키워드: {matching_keywords}")
+                        return {
+                            'row': row,
+                            'similarity': adjusted_similarity,
+                            'matching_keywords': matching_keywords
+                        }
                     except Exception as e:
                         logger.error(f"유사도 계산 중 오류: {e}")
-                        continue
+                        return None
                 except Exception as e:
                     logger.error(f"FAQ 항목 처리 중 오류: {e}")
-                    continue
+                    return None
+            
+            # ThreadPoolExecutor를 사용하여 병렬 처리
+            best_match = None
+            highest_similarity = -1
+            
+            with ThreadPoolExecutor() as executor:
+                # 모든 FAQ 항목에 대해 병렬로 처리
+                future_to_row = {
+                    executor.submit(process_faq_row, row_data): row_data 
+                    for row_data in self.faq_data.iterrows()
+                }
+                
+                # 결과 수집
+                for future in as_completed(future_to_row):
+                    result = future.result()
+                    if result and result['similarity'] > highest_similarity:
+                        highest_similarity = result['similarity']
+                        best_match = result['row']
+                        logger.info(f"새 최고 매치: '{best_match.get('original_question')}', 유사도: {highest_similarity:.4f}, 매칭 키워드: {result['matching_keywords']}")
             
             # 최종 유사도가 키워드 보너스 때문에 임계값을 넘었을 수 있으므로, 
             # 원래 임계값보다 크거나 같은지 확인
