@@ -75,6 +75,10 @@ class SystemMonitor:
                 logger.info(f"- 시스템 메모리 사용률: {system_info['system_memory']['percent']}")
                 logger.info(f"- CPU 사용률: {system_info['cpu']['percent']}")
                 
+                # 메모리 사용량이 80%를 초과하면 경고 로그
+                if float(system_info['system_memory']['percent'].rstrip('%')) > 80:
+                    logger.warning(f"메모리 사용량이 높습니다! ({system_info['system_memory']['percent']})")
+                
                 async with httpx.AsyncClient() as client:
                     # 현재 서버 URL 동적 생성
                     host = "localhost"
@@ -88,8 +92,9 @@ class SystemMonitor:
                         response = await client.get(f"http://{host}:{port}/ping")
                     
                     logger.info(f"자동 핑 응답: {response.status_code}")
+                
             except Exception as e:
-                logger.error(f"자동 핑 에러: {e}")
+                logger.error(f"시스템 모니터링 중 오류 발생: {e}")
                 continue
 
     def start_monitoring(self):
