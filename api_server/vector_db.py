@@ -8,6 +8,8 @@ import numpy as np
 from pathlib import Path
 import asyncio
 from utils.logger import get_logger
+from typing import List, Union
+import threading
 
 logger = get_logger(__name__)
 
@@ -22,6 +24,22 @@ class VectorDB:
         self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
         self.tokenizer = None
         self.model = None
+        self._lock = threading.Lock()  # 스레드 안전을 위한 락 추가
+        self._initialized = False
+
+    def initialize(self):
+        """모델과 토크나이저를 초기화합니다."""
+        if not self._initialized:
+            with self._lock:  # 초기화 시 락 사용
+                if not self._initialized:  # Double-checked locking
+                    try:
+                        self.model = AutoModel.from_pretrained(self.model_name)
+                        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                        self._initialized = True
+                        logger.info("VectorDB 초기화 완료")
+                    except Exception as e:
+                        logger.error(f"VectorDB 초기화 중 오류 발생: {e}")
+                        raise
 
     def get_collection(self):
         """현재 컬렉션을 가져오거나 없으면 생성합니다."""
@@ -79,68 +97,46 @@ class VectorDB:
         input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
         return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
-    def get_embeddings(self, texts, batch_size=32):
-        """텍스트를 임베딩으로 변환합니다."""
+    def get_embeddings(self, texts: Union[str, List[str]]) -> List[List[float]]:
+        """텍스트의 임베딩을 생성합니다."""
+        if not self._initialized:
+            self.initialize()
+
         if isinstance(texts, str):
             texts = [texts]
-        
-        if not texts:
-            logger.warning("get_embeddings: 입력 텍스트가 비어 있습니다.")
-            return []
-            
+
         logger.info(f"get_embeddings: 처리할 텍스트 {len(texts)}개")
-        
-        if len(texts) > batch_size:
-            logger.info(f"배치 크기({len(texts)})가 제한({batch_size})을 초과하여 분할 처리합니다.")
-            result = []
-            for i in range(0, len(texts), batch_size):
-                batch_texts = texts[i:i + batch_size]
-                batch_embeddings = self.get_embeddings(batch_texts)
-                result.extend(batch_embeddings)
-            return result
-        
+
         try:
-            tokenizer, model = self.load_model()
-            
-            encoded_input = tokenizer(
-                texts,
-                padding=True,
-                truncation=True,
-                max_length=512,
-                return_tensors='pt'
-            )
-            
-            with torch.no_grad():
-                model_output = model(**encoded_input)
-            
-            sentence_embeddings = self.mean_pooling(model_output, encoded_input['attention_mask'])
-            sentence_embeddings = torch.nn.functional.normalize(sentence_embeddings, p=2, dim=1)
-            
-            embeddings_list = sentence_embeddings.tolist()
-            
-            self.unload_model()
-            
-            if embeddings_list and len(embeddings_list) > 0:
-                logger.info(f"생성된 임베딩 형식: 차원 수 = {len(embeddings_list)}, 첫 임베딩 길이 = {len(embeddings_list[0])}")
+            with self._lock:  # 임베딩 생성 시 락 사용
+                # 토크나이저가 None인 경우 재초기화
+                if self.tokenizer is None:
+                    self.initialize()
                 
-                if isinstance(embeddings_list[0], list) and isinstance(embeddings_list[0][0], list):
-                    logger.info("3차원 임베딩을 2차원으로 변환합니다.")
-                    embeddings_list = [emb[0] for emb in embeddings_list]
-                
-                elif not isinstance(embeddings_list[0], list):
-                    embeddings_list = [embeddings_list]
-                    logger.info("단일 임베딩을 리스트로 변환했습니다.")
-                
-                if not all(isinstance(emb, list) and all(isinstance(x, (int, float)) for x in emb) for emb in embeddings_list):
-                    logger.error("임베딩 형식이 올바르지 않습니다.")
-                    return [[0.0] * 384 for _ in range(len(texts))]
-            
-            return embeddings_list
+                encoded_input = self.tokenizer(
+                    texts,
+                    padding=True,
+                    truncation=True,
+                    max_length=128,
+                    return_tensors='pt'
+                )
+
+                with torch.no_grad():
+                    model_output = self.model(**encoded_input)
+                    embeddings = model_output.last_hidden_state.mean(dim=1)
+                    embeddings = embeddings.numpy().tolist()
+
+                logger.info(f"생성된 임베딩 형식: 차원 수 = {len(embeddings)}, 첫 임베딩 길이 = {len(embeddings[0])}")
+                return embeddings
+
         except Exception as e:
             logger.error(f"임베딩 생성 중 오류 발생: {e}")
             import traceback
             logger.error(f"상세 오류: {traceback.format_exc()}")
-            return [[0.0] * 384 for _ in range(len(texts))]
+            # 오류 발생 시 재초기화 시도
+            self._initialized = False
+            self.initialize()
+            return [[0.0] * 384] * len(texts)  # 기본값 반환
 
     async def initialize_vector_db(self, faq_data, force_rebuild=False):
         """구조화된 FAQ 데이터를 벡터 데이터베이스에 임베딩합니다."""
