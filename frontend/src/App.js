@@ -199,7 +199,7 @@ function App() {
     setProcessingStatus('FAQ 구조화 처리 및 임베딩 중...');
     
     try {
-      const response = await axios.post(`${API_BASE_URL}/process-excel`);
+      const response = await axios.post(`${API_BASE_URL}/process-faq`);
       
       if (response.data.success) {
         setProcessingStatus(`FAQ 처리 완료: ${response.data.message}`);
