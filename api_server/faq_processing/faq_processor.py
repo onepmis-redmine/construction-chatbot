@@ -274,8 +274,8 @@ class FAQProcessor:
             # 각 FAQ 항목과 비교
             for idx, row in self.faq_data.iterrows():
                 try:
-                    variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
                     original_question = row.get('original_question', '')
+                    variations = json.loads(row['question_variations']) if isinstance(row['question_variations'], str) else row['question_variations']
                     
                     # keywords 필드 활용
                     keywords = []
@@ -344,62 +344,55 @@ class FAQProcessor:
                     if matching_keywords:
                         logger.info(f"키워드 매치 발견: {matching_keywords}, 보너스: {keyword_bonus}")
                     
-                    # 현재 질문과의 유사도 계산
-                    current_question_similarity = 0.0
+                    # 원본 질문과의 유사도 계산
                     try:
-                        current_embedding = self.vector_db.get_embeddings(original_question)
-                        if isinstance(current_embedding, list) and not isinstance(current_embedding[0], list):
-                            current_embedding = [current_embedding]
-                        current_question_similarity = torch.cosine_similarity(
+                        # 원본 질문 임베딩
+                        original_embedding = self.vector_db.get_embeddings(original_question)
+                        if isinstance(original_embedding, list) and not isinstance(original_embedding[0], list):
+                            original_embedding = [original_embedding]
+                        
+                        # 원본 질문과의 유사도
+                        original_similarity = torch.cosine_similarity(
                             torch.tensor(query_embedding[0]),
-                            torch.tensor(current_embedding[0]),
+                            torch.tensor(original_embedding[0]),
                             dim=0
                         ).item()
-                        # 현재 질문에 1.5배 가중치 적용
-                        current_question_similarity *= 1.5
-                        logger.info(f"현재 질문 유사도 (가중치 적용): {current_question_similarity:.4f}")
+                        
+                        # 변형 질문들을 하나의 문자열로 결합
+                        combined_variations = " ".join(variations)
+                        var_embedding = self.vector_db.get_embeddings(combined_variations)
+                        if isinstance(var_embedding, list) and not isinstance(var_embedding[0], list):
+                            var_embedding = [var_embedding]
+                        
+                        # 결합된 변형 질문들과의 유사도 계산
+                        var_similarity = torch.cosine_similarity(
+                            torch.tensor(query_embedding[0]),
+                            torch.tensor(var_embedding[0]),
+                            dim=0
+                        ).item()
+                        
+                        # 원본 질문과 변형 질문들 중 가장 높은 유사도 선택
+                        max_similarity = max(original_similarity, var_similarity)
+                        
+                        # 키워드 보너스 적용
+                        adjusted_similarity = max_similarity + keyword_bonus
+                        
+                        logger.info(f"질문: '{original_question}'")
+                        logger.info(f"- 원본 질문 유사도: {original_similarity:.4f}")
+                        logger.info(f"- 결합된 변형 질문 유사도: {var_similarity:.4f}")
+                        logger.info(f"- 최대 유사도: {max_similarity:.4f}")
+                        logger.info(f"- 키워드 보너스: {keyword_bonus:.2f}")
+                        logger.info(f"- 최종 유사도: {adjusted_similarity:.4f}")
+                        
+                        if adjusted_similarity > highest_similarity:
+                            highest_similarity = adjusted_similarity
+                            best_match = row
+                            logger.info(f"새 최고 매치: '{original_question}', 유사도: {adjusted_similarity:.4f}, 매칭 키워드: {matching_keywords}")
                     except Exception as e:
-                        logger.error(f"현재 질문 유사도 계산 중 오류: {e}")
-                    
-                    for q in variations:
-                        # 질문 전처리
-                        q = q.lower().strip()
-                        if q.endswith('?') or q.endswith('.'): 
-                            q = q[:-1]
-                            
-                        # 직접 코사인 유사도 계산
-                        try:
-                            # q에 대한 임베딩 조회
-                            q_embedding = self.vector_db.get_embeddings(q)
-                            
-                            # 단일 임베딩인 경우 리스트로 변환
-                            if isinstance(q_embedding, list) and not isinstance(q_embedding[0], list):
-                                q_embedding = [q_embedding]
-                            
-                            # 코사인 유사도 계산
-                            similarity = torch.cosine_similarity(
-                                torch.tensor(query_embedding[0]),
-                                torch.tensor(q_embedding[0]),
-                                dim=0
-                            ).item()
-                            
-                            # 현재 질문 유사도와 변형 질문 유사도 중 높은 값 선택
-                            max_similarity = max(similarity, current_question_similarity)
-                            
-                            # 키워드 보너스 적용
-                            adjusted_similarity = max_similarity + keyword_bonus
-                            
-                            logger.info(f"질문: '{q}', 기본 유사도: {similarity:.4f}, 현재 질문 유사도: {current_question_similarity:.4f}, 키워드 보너스: {keyword_bonus:.2f}, 최종: {adjusted_similarity:.4f}")
-                            
-                            if adjusted_similarity > highest_similarity:
-                                highest_similarity = adjusted_similarity
-                                best_match = row
-                                logger.info(f"새 최고 매치: '{original_question}', 유사도: {adjusted_similarity:.4f}, 매칭 키워드: {matching_keywords}")
-                        except Exception as e:
-                            logger.error(f"유사도 계산 중 오류: {e}")
-                            continue
+                        logger.error(f"유사도 계산 중 오류: {e}")
+                        continue
                 except Exception as e:
-                    logger.error(f"변형 질문 처리 중 오류: {e}")
+                    logger.error(f"FAQ 항목 처리 중 오류: {e}")
                     continue
             
             # 최종 유사도가 키워드 보너스 때문에 임계값을 넘었을 수 있으므로, 
